@@ -1,7 +1,9 @@
-import "dotenv/config";
+import dotenv from "dotenv";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import pg from "pg";
+
+dotenv.config({ path: resolve(process.cwd(), "../../.env") });
 
 const { Pool } = pg;
 const connectionString = process.env.DATABASE_URL;

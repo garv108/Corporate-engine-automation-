@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { Pool } from "pg";
+import { config } from "../config.js";
 
 export const healthRouter = Router();
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
+const pool = new Pool({ connectionString: config.DATABASE_URL, max: 2 });
 
 healthRouter.get("/live", (_request, response) => {
   response.json({ status: "ok", service: "cias-api" });

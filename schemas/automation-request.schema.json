@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AutomationRequest",
+  "type": "object",
+  "required": ["request_id", "tenant_id", "request_text", "requester_id"],
+  "properties": {
+    "request_id": {"type": "string"},
+    "tenant_id": {"type": "string"},
+    "requester_id": {"type": "string"},
+    "request_text": {"type": "string", "minLength": 10},
+    "department_id": {"type": ["string", "null"]},
+    "systems_in_scope": {"type": "array", "items": {"type": "string"}},
+    "data_sensitivity": {"enum": ["public", "internal", "confidential", "restricted", "unknown"]},
+    "risk_tolerance": {"enum": ["low", "medium", "high"]},
+    "desired_outcome": {"type": ["string", "null"]},
+    "constraints": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false
+}

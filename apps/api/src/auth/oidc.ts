@@ -58,6 +58,7 @@ export function createOidcIdentityVerifier(
 
       try {
         const claims = await verifyToken(match[1]!);
+        if (!claims) return null;
         const subject = claims.sub;
         const issuer = claims.iss;
         const tenantId = claims[options.tenantClaim];

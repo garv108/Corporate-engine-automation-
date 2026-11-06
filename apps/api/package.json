@@ -9,7 +9,8 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "db:migrate": "tsx src/db/migrate.ts"
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:verify-tenant-integrity": "tsx src/db/verify-tenant-integrity.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

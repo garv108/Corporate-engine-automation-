@@ -1,23 +1,49 @@
-import dotenv from "dotenv";
+import "dotenv/config";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import pg from "pg";
-
-dotenv.config({ path: resolve(process.cwd(), "../../.env") });
+import { config } from "../config.js";
 
 const { Pool } = pg;
-const connectionString = process.env.DATABASE_URL;
+const pool = new Pool({ connectionString: config.DATABASE_URL, max: 1 });
 
-if (!connectionString) {
-  throw new Error("DATABASE_URL is required to run migrations");
-}
-
-const pool = new Pool({ connectionString, max: 1 });
+const migrationName = "001_initial_schema";
 
 try {
-  const sql = await readFile(resolve(process.cwd(), "../../database/001_initial_schema.sql"), "utf8");
-  await pool.query(sql);
-  console.info("CIAS database schema applied successfully");
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      name TEXT PRIMARY KEY,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  const alreadyApplied = await pool.query(
+    "SELECT 1 FROM schema_migrations WHERE name = $1",
+    [migrationName]
+  );
+
+  if (alreadyApplied.rowCount) {
+    console.info(`Migration ${migrationName} is already applied`);
+  } else {
+    const sql = await readFile(
+      resolve(process.cwd(), "../../database/001_initial_schema.sql"),
+      "utf8"
+    );
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(sql);
+      await client.query("INSERT INTO schema_migrations (name) VALUES ($1)", [migrationName]);
+      await client.query("COMMIT");
+      console.info(`Migration ${migrationName} applied successfully`);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 } finally {
   await pool.end();
 }

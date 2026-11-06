@@ -2,26 +2,50 @@ import cors from "cors";
 import express, { type Express } from "express";
 import helmet from "helmet";
 import { config } from "./config.js";
+import { authenticationMiddleware, type IdentityVerifier } from "./auth/auth.js";
+import { createDepartmentsRouter, postgresDepartmentRepository, type DepartmentRepository } from "./departments/departments.js";
 import { healthRouter } from "./routes/health.js";
 
-export const app: Express = express();
+const denyByDefaultVerifier: IdentityVerifier = {
+  verify: async () => null
+};
 
-app.disable("x-powered-by");
-app.use(helmet());
-app.use(cors({ origin: config.CORS_ORIGIN.split(",").map((value) => value.trim()) }));
-app.use(express.json({ limit: "1mb" }));
+export function createApp(
+  identityVerifier: IdentityVerifier = denyByDefaultVerifier,
+  departmentRepository: DepartmentRepository = postgresDepartmentRepository
+): Express {
+  const application: Express = express();
+  application.disable("x-powered-by");
+  application.use(helmet());
+  application.use(cors({ origin: config.CORS_ORIGIN.split(",").map((value) => value.trim()) }));
+  application.use(express.json({ limit: "1mb" }));
 
-app.get("/", (_request, response) => {
-  response.json({
-    name: "CIAS API",
-    version: "0.1.0",
-    status: "running",
-    docs: "API documentation will be added in a later phase."
+  application.get("/", (_request, response) => {
+    response.json({
+      name: "CIAS API",
+      version: "0.1.0",
+      status: "running",
+      docs: "API documentation will be added in a later phase."
+    });
   });
-});
 
-app.use("/api/v1/health", healthRouter);
+  application.use("/api/v1/health", healthRouter);
+  application.use(
+    "/api/v1/departments",
+    authenticationMiddleware(identityVerifier),
+    createDepartmentsRouter(departmentRepository)
+  );
 
-app.use((_request, response) => {
-  response.status(404).json({ error: { code: "NOT_FOUND", message: "Route not found" } });
-});
+  application.use((_request, response) => {
+    response.status(404).json({ error: { code: "NOT_FOUND", message: "Route not found" } });
+  });
+
+  application.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
+    console.error("Unhandled API error", error);
+    response.status(500).json({ error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" } });
+  });
+
+  return application;
+}
+
+export const app = createApp();

@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from "express";
+import { Router, type Router as ExpressRouter, type Request, type Response } from "express";
 import { z } from "zod";
 import { pool } from "../db/pool.js";
 import { requirePermission, type AuthenticatedPrincipal } from "../auth/auth.js";
@@ -143,7 +143,7 @@ function handleConflict(error: unknown, response: Response): boolean {
   return true;
 }
 
-export function createDepartmentsRouter(repository: DepartmentRepository) {
+export function createDepartmentsRouter(repository: DepartmentRepository): ExpressRouter {
   const router = Router();
 
   router.get("/", requirePermission("departments:read"), async (request, response) => {

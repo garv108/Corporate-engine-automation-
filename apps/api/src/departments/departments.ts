@@ -14,12 +14,12 @@ export type Department = {
 
 export type DepartmentInput = {
   name: string;
-  description?: string | null;
+  description?: string | null | undefined;
 };
 
 export type DepartmentUpdate = {
-  name?: string;
-  description?: string | null;
+  name?: string | undefined;
+  description?: string | null | undefined;
 };
 
 export interface DepartmentRepository {

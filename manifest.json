@@ -1,0 +1,17 @@
+{
+  "project": "CIAS",
+  "version": "0.1.0",
+  "status": "architecture-baseline-starter",
+  "workstreams": 12,
+  "skills": [
+    "department-process-mapper",
+    "automation-opportunity-scout",
+    "technical-researcher",
+    "technology-evaluator",
+    "workflow-requirements-analyst",
+    "n8n-workflow-builder",
+    "workflow-qa-security",
+    "automation-optimizer"
+  ],
+  "cloud_deployment": false
+}

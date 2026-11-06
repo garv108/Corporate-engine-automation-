@@ -1,11 +1,14 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+import { resolve } from "node:path";
 import { z } from "zod";
+
+dotenv.config({ path: resolve(process.cwd(), "../../.env") });
 
 const environmentSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   API_HOST: z.string().default("0.0.0.0"),
   API_PORT: z.coerce.number().int().positive().default(4000),
-  DATABASE_URL: z.string().url(),
+  DATABASE_URL: z.string().url().default("postgresql://cias:cias_dev_password@localhost:5432/cias"),
   CORS_ORIGIN: z.string().default("http://localhost:5173")
 });
 

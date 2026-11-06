@@ -53,6 +53,13 @@ async function runMigrations(): Promise<void> {
       "SELECT name, checksum FROM schema_migrations ORDER BY name"
     );
     const appliedByName = new Map(applied.rows.map((row) => [row.name, row]));
+    const migrationFiles = new Set(files);
+    const unknownApplied = applied.rows.find((row) => !migrationFiles.has(row.name));
+    if (unknownApplied) {
+      throw new Error(
+        `Database records migration "${unknownApplied.name}" that is missing from this repository. Restore the migration file before continuing.`
+      );
+    }
 
     for (const file of files) {
       const sql = await readFile(join(migrationsDirectory, file), "utf8");

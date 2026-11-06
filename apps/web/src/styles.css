@@ -1,0 +1,93 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap");
+
+:root {
+  font-family: "DM Sans", sans-serif;
+  color: #e8edf5;
+  background: #0b1220;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --muted: #8995a8;
+  --line: #202c3d;
+  --panel: #111c2d;
+  --accent: #e6a14a;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button { font: inherit; }
+.shell { min-height: 100vh; display: flex; }
+.sidebar { width: 250px; flex: 0 0 250px; background: #0d1727; border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 27px 16px 18px; }
+.brand { display: flex; align-items: center; gap: 11px; padding: 0 10px 34px; }
+.brand-mark { width: 37px; height: 37px; border-radius: 10px; display: grid; place-items: center; background: #d89542; color: #172033; font: 800 21px Manrope, sans-serif; }
+.brand strong { display: block; font: 800 16px Manrope, sans-serif; letter-spacing: 1.4px; }
+.brand span { display: block; color: #77859a; font-size: 8px; letter-spacing: 1.3px; margin-top: 3px; }
+.workspace-label { color: #66758b; font-size: 10px; font-weight: 700; letter-spacing: 1.4px; padding: 0 11px 12px; }
+nav { display: grid; gap: 5px; }
+.nav-item { display: flex; align-items: center; gap: 12px; border: 0; background: transparent; color: #98a5b8; border-radius: 7px; padding: 11px 12px; text-align: left; font-size: 13px; cursor: default; }
+.nav-item.active { background: #1b2a3e; color: #f0c17d; }
+.nav-dot { width: 6px; height: 6px; border: 1px solid #6d7d93; border-radius: 2px; }
+.active .nav-dot { background: var(--accent); border-color: var(--accent); }
+.sidebar-footer { margin-top: auto; border-top: 1px solid var(--line); padding: 17px 8px 0; color: #78879b; font-size: 11px; display: flex; align-items: center; gap: 9px; }
+.status-indicator, .api-status span { width: 7px; height: 7px; background: #d5a45e; border-radius: 50%; }
+.main { min-width: 0; flex: 1; }
+.topbar { height: 68px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; padding: 0 42px; }
+.breadcrumb { color: #8794a8; font-size: 12px; }
+.breadcrumb span { color: #46546a; padding: 0 8px; }
+.topbar-right { display: flex; align-items: center; gap: 19px; }
+.api-status { color: #d3a15b; display: flex; align-items: center; gap: 7px; text-transform: uppercase; font-size: 10px; letter-spacing: .7px; }
+.api-status span { background: #d5a45e; }
+.api-status.online { color: #72c9a1; }
+.api-status.online span { background: #72c9a1; }
+.avatar { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: #26374d; color: #e6c18e; font-size: 10px; font-weight: 700; }
+.content { max-width: 1320px; padding: 43px 42px 70px; margin: 0 auto; }
+.page-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 29px; }
+.eyebrow { color: #d9a45e; font-size: 9px; font-weight: 700; letter-spacing: 1.8px; margin: 0 0 10px; }
+h1, h2 { font-family: Manrope, sans-serif; margin: 0; }
+h1 { font-size: clamp(27px, 3vw, 35px); letter-spacing: -1.1px; }
+.subtitle { color: var(--muted); margin: 9px 0 0; font-size: 13px; }
+.environment-tag { border: 1px solid #59452c; border-radius: 5px; color: #dfb477; padding: 7px 10px; font-size: 9px; font-weight: 700; letter-spacing: .8px; white-space: nowrap; }
+.notice { display: flex; align-items: flex-start; gap: 13px; background: #172438; border: 1px solid #2a3a50; border-radius: 8px; padding: 17px 18px; margin-bottom: 35px; }
+.notice-icon { width: 20px; height: 20px; flex: 0 0 20px; border-radius: 50%; display: grid; place-items: center; background: #2d425c; color: #c8d9ed; font-size: 12px; font-weight: 700; }
+.notice strong { font-size: 12px; }
+.notice p { margin: 5px 0 0; color: #98a7ba; font-size: 12px; line-height: 1.6; }
+.section-heading { margin: 0 0 15px; }
+.section-heading h2 { font-size: 16px; letter-spacing: -.3px; }
+.section-heading p { color: var(--muted); font-size: 11px; margin: 5px 0 0; }
+.metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; margin-bottom: 37px; }
+.metric-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 17px 17px 16px; min-height: 112px; }
+.metric-label { display: block; color: #8391a5; font-size: 9px; font-weight: 700; letter-spacing: 1px; margin-bottom: 14px; }
+.metric-card strong { display: block; font: 700 17px Manrope, sans-serif; }
+.metric-foot { display: block; color: #738198; font-size: 10px; margin-top: 7px; }
+.milestone-list { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.milestone { display: flex; align-items: center; gap: 15px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+.milestone:last-child { border-bottom: 0; }
+.milestone-number { color: #d6a15a; font: 700 11px Manrope, sans-serif; }
+.milestone-copy { display: grid; gap: 4px; flex: 1; }
+.milestone-copy strong { font-size: 12px; }
+.milestone-copy span { color: var(--muted); font-size: 10px; }
+.milestone-status { color: #8391a5; font-size: 10px; white-space: nowrap; }
+.milestone-status.current { color: #e4b16e; }
+@media (max-width: 900px) {
+  .sidebar { width: 205px; flex-basis: 205px; }
+  .content { padding: 32px 25px; }
+  .topbar { padding: 0 25px; }
+  .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 620px) {
+  .sidebar { width: 58px; flex-basis: 58px; padding: 18px 7px; }
+  .brand { padding: 0 3px 28px; }
+  .brand > div:last-child, .workspace-label, .nav-item:not(.active), .nav-item.active { font-size: 0; }
+  .brand-mark { width: 36px; height: 36px; }
+  nav { gap: 8px; }
+  .nav-item { width: 42px; height: 42px; justify-content: center; padding: 0; }
+  .nav-dot { width: 7px; height: 7px; }
+  .sidebar-footer { font-size: 0; justify-content: center; padding-inline: 0; }
+  .content { padding: 27px 16px; }
+  .topbar { padding: 0 16px; }
+  .page-heading { align-items: flex-start; flex-direction: column; }
+  .metrics-grid { gap: 9px; }
+  .metric-card { padding: 13px; }
+  .metric-card strong { font-size: 14px; }
+  .milestone { gap: 10px; padding: 14px 11px; }
+}

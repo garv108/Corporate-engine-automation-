@@ -23,8 +23,15 @@ Rules: enforce tenant scope server-side; cursor pagination; idempotency keys for
 
 
 ## Authentication and tenant context
-- Protected routes require a verified `AuthenticatedPrincipal` created by a configured identity adapter.
-- The principal contains the verified subject, issuer, internal tenant UUID, roles, and permissions.
-- Tenant context is derived from that principal; `x-tenant-id` and other caller-controlled headers are never proof of tenant membership.
-- Missing, malformed, expired, or unverifiable identity fails closed with HTTP 401. Missing permission returns HTTP 403.
-- The identity adapter is intentionally provider-neutral. No provider is selected or connected yet; protected domain routes must not be enabled until a production-grade verifier and active-membership lookup are configured.
+- Protected routes require a verified `AuthenticatedPrincipal` created by the configured OIDC identity adapter.
+- The adapter verifies JWT signatures using the configured JWKS endpoint and checks issuer, audience, and allowed signing algorithms.
+- The signed `cias_tenant_id` claim identifies the requested tenant; an active `tenant_memberships` row must match issuer, subject, and tenant before a principal is created.
+- Roles and permissions are loaded from the membership record, never trusted from token-supplied permission claims.
+- Tenant context is derived from the verified principal; `x-tenant-id` and other caller-controlled headers are never proof of tenant membership.
+- Missing, malformed, expired, unverifiable, or unprovisioned identities fail closed with HTTP 401. Missing permission returns HTTP 403.
+- OIDC is provider-neutral. No identity provider is selected or connected; production configuration is supplied later through environment variables.
+
+## Implemented tenant-scoped domain routes
+- GET/POST `/departments`; GET/PATCH `/departments/{id}`
+- GET/POST `/business-processes`; GET/PATCH `/business-processes/{id}`
+- GET/POST `/opportunities`; GET/PATCH `/opportunities/{id}`

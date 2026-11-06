@@ -1,10 +1,10 @@
 import cors from "cors";
-import express from "express";
+import express, { type Express } from "express";
 import helmet from "helmet";
 import { config } from "./config.js";
 import { healthRouter } from "./routes/health.js";
 
-export const app = express();
+export const app: Express = express();
 
 app.disable("x-powered-by");
 app.use(helmet());

@@ -12,8 +12,8 @@ The Phase 2 branch was inspected across the API entry points, configuration, dat
 | Migration history | Existing legacy rows without checksums cannot be safely verified automatically. | Runner fails closed and requires a deliberate baseline step rather than silently trusting old history. |
 | Tenant integrity | Department/process/opportunity relationships could point across tenants because foreign keys checked IDs but not tenant ownership. | Add composite tenant-aware foreign keys and supporting indexes in migration 002. |
 | Authentication | No verified identity provider or authenticated-principal middleware exists yet. | Do not expose tenant CRUD endpoints until the identity contract and fail-closed authorization are implemented. |
-| Database lifecycle | The health router owns a separate pool at module import time; shutdown currently closes only the HTTP server. | Track as a follow-up before production deployment; tests currently avoid readiness checks requiring a live database. |
-| Configuration | .env loading relies on a process working-directory assumption, and the development database URL has a default. | Keep production configuration validation in the next hardening pass; never deploy with the development default. |
+| Database lifecycle | The health router originally owned a separate pool at module import time; shutdown originally closed only the HTTP server. | Addressed in this branch: a shared pool is used by health checks and graceful shutdown closes it. Production soak testing remains outstanding. |
+| Configuration | .env loading relied on a process working-directory assumption, and the development database URL has a default. | Addressed: root .env resolution is based on the module location; production now requires explicit DATABASE_URL and CORS_ORIGIN. The development default remains local-only. |
 | CI reproducibility | CI uses --no-frozen-lockfile, allowing dependency resolution to drift. | Add a committed lockfile and switch CI to frozen installs before calling the build reproducible. |
 
 ## Immediate safety boundary

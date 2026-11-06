@@ -1,5 +1,5 @@
 import cors from "cors";
-import express, { type Express } from "express";
+import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import helmet from "helmet";
 import { config } from "./config.js";
 import { authenticationMiddleware, type IdentityVerifier } from "./auth/auth.js";
@@ -40,7 +40,7 @@ export function createApp(
     response.status(404).json({ error: { code: "NOT_FOUND", message: "Route not found" } });
   });
 
-  application.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
+  application.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
     console.error("Unhandled API error", error);
     response.status(500).json({ error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" } });
   });

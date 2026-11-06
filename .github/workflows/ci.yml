@@ -12,6 +12,20 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: cias
+          POSTGRES_PASSWORD: cias_dev_password
+          POSTGRES_DB: cias
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cias -d cias"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,6 +39,18 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
+      - name: Apply database migrations
+        run: pnpm db:migrate
+        env:
+          DATABASE_URL: postgresql://cias:cias_dev_password@localhost:5432/cias
+      - name: Verify tenant isolation constraints
+        run: pnpm --filter @cias/api db:verify-tenant-integrity
+        env:
+          DATABASE_URL: postgresql://cias:cias_dev_password@localhost:5432/cias
+      - name: Re-run migrations to verify idempotency
+        run: pnpm db:migrate
+        env:
+          DATABASE_URL: postgresql://cias:cias_dev_password@localhost:5432/cias
       - name: Typecheck
         run: pnpm typecheck
       - name: Test

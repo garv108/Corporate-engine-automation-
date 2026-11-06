@@ -1,8 +1,10 @@
 import dotenv from "dotenv";
-import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
-dotenv.config({ path: resolve(process.cwd(), "../../.env") });
+dotenv.config({
+  path: process.env.DOTENV_CONFIG_PATH ?? fileURLToPath(new URL("../../../.env", import.meta.url))
+});
 
 const environmentSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -16,6 +18,13 @@ const parsed = environmentSchema.safeParse(process.env);
 
 if (!parsed.success) {
   throw new Error(`Invalid environment configuration: ${parsed.error.message}`);
+}
+
+if (parsed.data.NODE_ENV === "production") {
+  const missing = ["DATABASE_URL", "CORS_ORIGIN"].filter((key) => !process.env[key]?.trim());
+  if (missing.length > 0) {
+    throw new Error(`Missing required production environment variables: ${missing.join(", ")}`);
+  }
 }
 
 export const config = parsed.data;

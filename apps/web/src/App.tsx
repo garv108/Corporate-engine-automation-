@@ -1,18 +1,7 @@
 import { useEffect, useState } from "react";
+import { navigation } from "./navigation";
 
 type ApiStatus = "checking" | "online" | "offline";
-
-const navigation = [
-  "Overview",
-  "Departments",
-  "Research Hub",
-  "Opportunities",
-  "Capability Registry",
-  "Workflow Studio",
-  "Agent Runs",
-  "Approvals",
-  "Analytics"
-];
 
 function App() {
   const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");

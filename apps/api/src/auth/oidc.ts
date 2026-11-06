@@ -26,7 +26,12 @@ export function createOidcIdentityVerifier(
   options: OidcVerifierOptions,
   dependencies: OidcVerifierDependencies = {}
 ): IdentityVerifier {
-  const jwks = createRemoteJWKSet(new URL(options.jwksUrl));
+  const issuerUrl = new URL(options.issuer);
+  const jwksUrl = new URL(options.jwksUrl);
+  if (issuerUrl.protocol !== "https:" || jwksUrl.protocol !== "https:") {
+    throw new Error("OIDC issuer and JWKS URLs must use HTTPS");
+  }
+  const jwks = createRemoteJWKSet(jwksUrl);
 
   const verifyToken = dependencies.verifyToken ?? (async (token: string) => {
     const verified = await jwtVerify(token, jwks, {

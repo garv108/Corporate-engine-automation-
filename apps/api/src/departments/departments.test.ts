@@ -1,4 +1,3 @@
-import express from "express";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import type { AuthenticatedPrincipal, IdentityVerifier } from "../auth/auth.js";

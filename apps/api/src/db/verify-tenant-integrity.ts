@@ -1,11 +1,12 @@
 import pg from "pg";
+import type { PoolClient } from "pg";
 import { config } from "../config.js";
 
 const { Pool } = pg;
 const pool = new Pool({ connectionString: config.DATABASE_URL, max: 1 });
 
 async function expectForeignKeyViolation(
-  client: pg.PoolClient,
+  client: PoolClient,
   savepoint: string,
   operation: () => Promise<unknown>
 ): Promise<void> {

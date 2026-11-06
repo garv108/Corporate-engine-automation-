@@ -36,7 +36,20 @@ export type AutomationOpportunityInput = {
   status?: string | undefined;
 };
 
-export type AutomationOpportunityUpdate = Partial<AutomationOpportunityInput>;
+export type AutomationOpportunityUpdate = {
+  departmentId?: string | null | undefined;
+  processId?: string | null | undefined;
+  title?: string | undefined;
+  problemStatement?: string | undefined;
+  proposedOutcome?: string | null | undefined;
+  feasibilityScore?: number | null | undefined;
+  impactScore?: number | null | undefined;
+  complexityScore?: number | null | undefined;
+  confidence?: number | null | undefined;
+  impactEstimate?: Record<string, unknown> | undefined;
+  evidenceRefs?: unknown[] | undefined;
+  status?: string | undefined;
+};
 
 export interface AutomationOpportunityRepository {
   list(tenantId: string): Promise<AutomationOpportunity[]>;

@@ -8,6 +8,7 @@ import { createBusinessProcessesRouter, postgresBusinessProcessRepository, type 
 import { createAutomationOpportunitiesRouter, postgresAutomationOpportunityRepository, type AutomationOpportunityRepository } from "./opportunities/opportunities.js";
 import { healthRouter } from "./routes/health.js";
 import { createProcessModelsRouter, postgresProcessModelRepository, type ProcessModelRepository } from "./process-models/process-models.js";
+import { createDiscoverySessionsRouter, postgresDiscoverySessionRepository, type DiscoverySessionRepository } from "./process-discovery/discovery-sessions.js";
 
 const denyByDefaultVerifier: IdentityVerifier = {
   verify: async () => null
@@ -18,7 +19,8 @@ export function createApp(
   departmentRepository: DepartmentRepository = postgresDepartmentRepository,
   businessProcessRepository: BusinessProcessRepository = postgresBusinessProcessRepository,
   opportunityRepository: AutomationOpportunityRepository = postgresAutomationOpportunityRepository,
-  processModelRepository: ProcessModelRepository = postgresProcessModelRepository
+  processModelRepository: ProcessModelRepository = postgresProcessModelRepository,
+  discoverySessionRepository: DiscoverySessionRepository = postgresDiscoverySessionRepository
 ): Express {
   const application: Express = express();
   application.disable("x-powered-by");
@@ -49,6 +51,11 @@ export function createApp(
   application.use(
     "/api/v1/business-processes/:processId/models",
     createProcessModelsRouter(processModelRepository)
+  );
+  application.use(
+    "/api/v1/process-discovery/sessions",
+    authenticationMiddleware(identityVerifier),
+    createDiscoverySessionsRouter(discoverySessionRepository)
   );
   application.use(
     "/api/v1/opportunities",

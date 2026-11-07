@@ -259,6 +259,15 @@ Immediate actions:
 6. Add curated workflow imports and manual registration before automated source ingestion.
 7. Use the n8n 2.x self-hosted instance for sandbox testing only after explicit environment separation and credentials review.
 
+
+### M1-A / M1-B implementation checkpoint — 2026-11-07
+
+- M1-A process-model design and versioned process-model API are implemented in the Phase 2 feature branch.
+- M1-B now has a first backend slice for durable discovery sessions, turns, structured fact events, revision checks and deterministic completeness.
+- The M1-B slice is not yet an LLM interview or a completed browser experience. It deliberately retains raw user messages and requires explicit field-mapped fact updates.
+- Session confirmation freezes a discovery snapshot; conversion to a catalogue process model remains a separate operation.
+- No identity provider, model provider, sensitive workforce data, production credentials, n8n integration or deployment is enabled by this checkpoint.
+
 ## 15. Glossary for implementation work
 
 - **API:** a server-defined interface that the browser, desktop client or another service calls. Internal CIAS APIs are not automatically paid vendor APIs.

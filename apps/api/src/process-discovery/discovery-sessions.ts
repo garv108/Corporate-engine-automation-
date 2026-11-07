@@ -66,7 +66,7 @@ export type DiscoverySessionRepository = {
     message: string; factUpdates: DiscoveryFactUpdate[]; expectedRevision: number; answerToQuestionId?: string | undefined
   }): Promise<DiscoverySession | null>;
   confirm(tenantId: string, sessionId: string, actorId: string, expectedRevision: number, acknowledgeUnresolved?: boolean): Promise<DiscoverySession | null>;
-  convertToProcess(tenantId: string, sessionId: string, actorId: string, input: { name: string; description?: string | null }): Promise<DiscoveryConversionResult | null>;
+  convertToProcess(tenantId: string, sessionId: string, actorId: string, input: { name: string; description?: string | null | undefined }): Promise<DiscoveryConversionResult | null>;
 };
 
 export type DiscoveryConversionResult = {
@@ -486,7 +486,7 @@ export class PostgresDiscoverySessionRepository implements DiscoverySessionRepos
     tenantId: string,
     sessionId: string,
     actorId: string,
-    input: { name: string; description?: string | null }
+    input: { name: string; description?: string | null | undefined }
   ): Promise<DiscoveryConversionResult | null> {
     const client = await pool.connect();
     try {

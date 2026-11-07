@@ -4,6 +4,7 @@ import {
   createDiscoveryApi,
   DiscoveryApiError,
   type DiscoveryFactUpdate,
+  type DiscoveryConversionResult,
   type DiscoverySession,
   type DiscoverySessionSummary
 } from "./discovery-api";
@@ -45,7 +46,7 @@ function describeApiError(error: unknown): string {
     if (error.status === 401) {
       return "Sign-in is not available yet. The API is deny-by-default until a real OIDC provider is configured. No demo login or authentication bypass is enabled.";
     }
-    if (error.status === 403) return "Your authenticated account does not have permission to use discovery sessions.";
+    if (error.status === 403) return "Your authenticated account does not have a required permission for this action.";
     if (error.status === 409 && error.code === "REVISION_CONFLICT") {
       return "This session changed in another tab or request. Reload the session to get the latest revision before continuing.";
     }
@@ -83,6 +84,9 @@ function GuidedDiscovery() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [conversionName, setConversionName] = useState("");
+  const [conversionDescription, setConversionDescription] = useState("");
+  const [conversionResult, setConversionResult] = useState<DiscoveryConversionResult | null>(null);
 
   const canEdit = session !== null && (session.status === "active" || session.status === "ready_for_review");
   const question = session?.nextQuestion ?? null;
@@ -124,6 +128,9 @@ function GuidedDiscovery() {
     });
     setAnswerText(session.nextQuestion?.id === "steps" ? steps.map((step) => step.name).join("\n") : "");
     setAcknowledgeUnresolved(false);
+    setConversionName(session.currentDraft.purpose?.slice(0, 160) ?? "");
+    setConversionDescription(session.currentDraft.scope ?? "");
+    setConversionResult(null);
     setNotice(null);
   }, [session?.id, session?.revision, session?.nextQuestion?.id]);
 
@@ -338,6 +345,29 @@ function GuidedDiscovery() {
     }
   }
 
+  async function convertSession(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session || session.status !== "confirmed" || conversionName.trim().length < 2) return;
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await api.convert(session.id, {
+        name: conversionName.trim(),
+        ...(conversionDescription.trim() ? { description: conversionDescription.trim() } : {})
+      });
+      setConversionResult(result);
+      setNotice(result.alreadyConverted
+        ? "This discovery session was already converted. CIAS returned the existing catalogue record."
+        : "The catalogue process and its first draft model were created from this confirmed snapshot.");
+      await refreshSessions();
+    } catch (cause) {
+      setError(describeApiError(cause));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const accessBlocked = error?.startsWith("Sign-in is not available yet.") ?? false;
 
   return (
@@ -516,6 +546,36 @@ function GuidedDiscovery() {
                   </div>
                 )}
               </article>
+
+              {session.status === "confirmed" && (
+                <article className="discovery-panel conversion-panel">
+                    <div className="panel-kicker">BUSINESS PROCESS CATALOGUE</div>
+                    <h2>Turn this snapshot into a process draft</h2>
+                    <p className="panel-description">This creates a catalogue record and its first draft process-model version. The model still requires its own review and confirmation; nothing is published or executed.</p>
+                    {conversionResult ? (
+                      <div className="conversion-result">
+                        <span className="session-status ready_for_review">Draft created · v{conversionResult.modelVersion}</span>
+                        <strong>{conversionResult.processName}</strong>
+                        <small>Process ID: {conversionResult.processId}</small>
+                        <small>Draft model ID: {conversionResult.modelVersionId}</small>
+                        {conversionResult.alreadyConverted && <small>This is the existing conversion, not a duplicate.</small>}
+                      </div>
+                    ) : (
+                      <form onSubmit={convertSession}>
+                        <label htmlFor="catalogue-process-name">Catalogue process name</label>
+                        <input id="catalogue-process-name" value={conversionName} onChange={(event) => setConversionName(event.target.value)} minLength={2} maxLength={160} required />
+                        <label htmlFor="catalogue-process-description">Description · optional</label>
+                        <textarea id="catalogue-process-description" rows={2} value={conversionDescription} onChange={(event) => setConversionDescription(event.target.value)} maxLength={2000} placeholder="A concise description of the process scope" />
+                        <div className="form-footer">
+                          <span>One conversion per discovery session · retry-safe</span>
+                          <button className="primary-button" type="submit" disabled={saving || conversionName.trim().length < 2}>
+                            {saving ? "Creating draft..." : "Create catalogue draft"}
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                </article>
+              )}
 
               {canEdit && (
                 <article className="discovery-panel context-panel">

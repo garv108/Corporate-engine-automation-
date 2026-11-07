@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../db/pool.js";
-import { postgresAutomationOpportunityRepository } from "./opportunities.js";
+import { OpportunityStatusTransitionError, postgresAutomationOpportunityRepository } from "./opportunities.js";
 
 const tenantA = randomUUID();
 const tenantB = randomUUID();
@@ -85,26 +85,38 @@ describe("Automation Opportunities PostgreSQL tenant isolation", () => {
     ).rejects.toMatchObject({ code: "23503" });
   });
 
-  it("persists scores and an audit event for a valid opportunity", async () => {
+  it("enforces opportunity lifecycle transitions and audits status changes", async () => {
     const created = await postgresAutomationOpportunityRepository.create(tenantA, actorId, {
       title: "Audited opportunity",
       problemStatement: "Manual reconciliation is repetitive",
       processId: processA,
-      impactScore: 82,
-      confidence: 0.91,
-      impactEstimate: { hoursSavedPerMonth: 24 },
-      evidenceRefs: ["source-1"]
+      impactEstimate: { unit: "hours_per_month", estimate: 24, basis: "Owner-provided baseline" },
+      evidenceRefs: ["research-finding:source-1"]
     });
 
     expect(created.tenantId).toBe(tenantA);
     expect(created.processId).toBe(processA);
-    expect(created.impactScore).toBe(82);
-    expect(created.confidence).toBe(0.91);
+    expect(created.status).toBe("discovered");
+    expect(created.evidenceRefs).toEqual(["research-finding:source-1"]);
+
+    const qualified = await postgresAutomationOpportunityRepository.update(tenantA, created.id, actorId, {
+      status: "qualified"
+    });
+    expect(qualified?.status).toBe("qualified");
+
+    await expect(
+      postgresAutomationOpportunityRepository.update(tenantA, created.id, actorId, {
+        status: "approved_for_design"
+      })
+    ).rejects.toBeInstanceOf(OpportunityStatusTransitionError);
+
+    const unchanged = await postgresAutomationOpportunityRepository.get(tenantA, created.id);
+    expect(unchanged?.status).toBe("qualified");
 
     const audit = await pool.query(
-      "SELECT action, actor_id FROM audit_events WHERE tenant_id = $1 AND resource_id = $2",
+      "SELECT metadata->>'previousStatus' AS previous_status, metadata->>'nextStatus' AS next_status FROM audit_events WHERE tenant_id = $1 AND resource_id = $2 AND action = 'automation_opportunity.updated'",
       [tenantA, created.id]
     );
-    expect(audit.rows).toEqual([{ action: "automation_opportunity.created", actor_id: actorId }]);
+    expect(audit.rows).toEqual([{ previous_status: "discovered", next_status: "qualified" }]);
   });
 });

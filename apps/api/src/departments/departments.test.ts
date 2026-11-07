@@ -41,7 +41,10 @@ describe("tenant-scoped Departments API", () => {
       .get("/api/v1/departments").set("x-tenant-id", tenantB);
     expect(response.status).toBe(200);
     expect(repository.list).toHaveBeenCalledWith(tenantA, { limit: 50, after: null });
-    expect(response.body.data).toEqual([department]);
+    expect(response.body.data).toMatchObject([{
+      ...department,
+      createdAt: department.createdAt.toISOString()
+    }]);
     expect(response.body.pagination).toEqual({ limit: 50, nextCursor: null });
   });
 

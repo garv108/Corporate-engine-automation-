@@ -1,6 +1,6 @@
 # Business Process Catalogue — implementation boundary
 
-**Status:** Implemented API foundation; process modelling and process intelligence remain future work.
+**Status:** Implemented catalogue and M1-A versioned process-model API foundation; process discovery sessions and process intelligence remain future work.
 
 ## Purpose
 

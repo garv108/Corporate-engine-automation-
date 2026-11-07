@@ -12,7 +12,7 @@ The API keeps database access, authentication, tenant resolution, authorization,
 |---|---|---|
 | Health | `GET /api/v1/health` | Implemented |
 | Departments | `GET/POST /departments`, `GET/PATCH /departments/{id}` | Implemented |
-| Business processes | `GET/POST /business-processes`, `GET/PATCH /business-processes/{id}` | Implemented |
+| Business processes | `GET/POST /business-processes`, `GET/PATCH /business-processes/{id}` | Implemented |\n| Process models | `GET/POST /business-processes/{processId}/models`, `GET/PUT /business-processes/{processId}/models/{modelVersionId}`, `POST .../{modelVersionId}/confirm`, `POST .../{modelVersionId}/publish`, `POST .../{modelVersionId}/facts/{factId}/review` | Implemented as the M1-A versioned process-map foundation |
 | Automation opportunities | `GET/POST /opportunities`, `GET/PATCH /opportunities/{id}` | Implemented as a basic persistence/API slice; not a complete discovery or workflow-library feature |
 
 ### Collection pagination

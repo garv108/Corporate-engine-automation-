@@ -1,6 +1,6 @@
 # Business Process Catalogue — implementation boundary
 
-**Status:** Implemented catalogue and M1-A versioned process-model API foundation; process discovery sessions and process intelligence remain future work.
+**Status:** Implemented catalogue, M1-A versioned process-model API, M1-B guided discovery/conversion and the initial M1-C evidence/intervention assessment foundation; process mining and full process intelligence remain future work.
 
 ## Purpose
 
@@ -61,7 +61,7 @@ The intended domain progression is:
 2. **Process model:** separately versioned steps, transitions, roles, rules, inputs/outputs and exception paths. Published versions are immutable; changes create a new version.
 3. **Process cases and events:** an occurrence binds to an explicit model version and an event history with source provenance and event-time/ingestion-time distinction.
 4. **Process intelligence:** metrics and bottleneck hypotheses are calculated from quality-qualified events, with coverage and limitations visible.
-5. **Intervention governance:** automation is compared with process redesign, policy simplification, training, data remediation and capacity changes. Automation remains approval-gated.
+5. **Intervention governance:** M1-C now stores source-linked opportunity evidence, non-automation and automation candidates, and immutable versioned assessments. Full business-case, process mining and downstream workflow governance remain future work. Automation remains approval-gated.
 
 The model notation (for example, BPMN-like notation or a state machine), case-correlation strategy, event retention and tenant-specific classification policy require separate architecture decisions before implementation.
 

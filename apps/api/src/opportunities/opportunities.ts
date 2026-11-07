@@ -38,6 +38,17 @@ export function canTransitionOpportunityStatus(from: OpportunityStatus, to: Oppo
   return from === to || statusTransitions[from].includes(to);
 }
 
+export class OpportunityAlternativesIncompleteError extends Error {
+  constructor(readonly assessedCandidateCount: number) {
+    super("At least two eligible intervention candidates must each have an assessment before alternatives can be compared.");
+  }
+}
+export class OpportunityBusinessCaseRequiredError extends Error {
+  constructor() {
+    super("A selected intervention and a separate business-case record are required before this opportunity can enter business_case_drafted.");
+  }
+}
+
 export class OpportunityStatusTransitionError extends Error {
   constructor(
     readonly from: string,
@@ -200,6 +211,21 @@ export const postgresAutomationOpportunityRepository: AutomationOpportunityRepos
         throw new OpportunityStatusTransitionError(current.status, input.status);
       }
 
+      if (input.status === "alternatives_compared" && current.status === "qualified") {
+        const candidates = await client.query<{ count: number }>(
+          "SELECT count(*)::int AS count FROM opportunity_interventions i " +
+          "WHERE i.tenant_id=$1 AND i.opportunity_id=$2 AND i.status IN ('proposed','shortlisted','selected') " +
+          "AND EXISTS (SELECT 1 FROM opportunity_intervention_assessments a " +
+          "WHERE a.tenant_id=i.tenant_id AND a.opportunity_id=i.opportunity_id AND a.intervention_id=i.id)",
+          [tenantId, id]
+        );
+        const count = candidates.rows[0]?.count ?? 0;
+        if (count < 2) throw new OpportunityAlternativesIncompleteError(count);
+      }
+      if (input.status === "business_case_drafted" && current.status === "alternatives_compared") {
+        throw new OpportunityBusinessCaseRequiredError();
+      }
+
       const result = await client.query<OpportunityRow>(
         `UPDATE automation_opportunities SET
           department_id = CASE WHEN $3::boolean THEN $4::uuid ELSE department_id END,
@@ -288,6 +314,15 @@ function validationError(response: Response, message: string): void {
 }
 
 function handleOpportunityError(error: unknown, response: Response): boolean {
+  if (error instanceof OpportunityAlternativesIncompleteError) {
+    response.status(409).json({ error: { code: "ALTERNATIVES_INCOMPLETE", message: error.message, assessedCandidateCount: error.assessedCandidateCount } });
+    return true;
+  }
+  if (error instanceof OpportunityBusinessCaseRequiredError) {
+    response.status(409).json({ error: { code: "BUSINESS_CASE_REQUIRED", message: error.message } });
+    return true;
+  }
+
   if (error instanceof OpportunityStatusTransitionError) {
     response.status(409).json({
       error: {

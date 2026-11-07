@@ -10,6 +10,7 @@ import { createAutomationOpportunitiesRouter, postgresAutomationOpportunityRepos
 import { healthRouter } from "./routes/health.js";
 import { createProcessModelsRouter, postgresProcessModelRepository, type ProcessModelRepository } from "./process-models/process-models.js";
 import { createDiscoverySessionsRouter, postgresDiscoverySessionRepository, type DiscoverySessionRepository } from "./process-discovery/discovery-sessions.js";
+import { createOpportunityIntelligenceRouter, postgresOpportunityIntelligenceRepository, type OpportunityIntelligenceRepository } from "./opportunities/opportunity-intelligence.js";
 
 const configuredIdentityVerifier: IdentityVerifier = createConfiguredIdentityVerifier(config);
 
@@ -19,7 +20,8 @@ export function createApp(
   businessProcessRepository: BusinessProcessRepository = postgresBusinessProcessRepository,
   opportunityRepository: AutomationOpportunityRepository = postgresAutomationOpportunityRepository,
   processModelRepository: ProcessModelRepository = postgresProcessModelRepository,
-  discoverySessionRepository: DiscoverySessionRepository = postgresDiscoverySessionRepository
+  discoverySessionRepository: DiscoverySessionRepository = postgresDiscoverySessionRepository,
+  opportunityIntelligenceRepository: OpportunityIntelligenceRepository = postgresOpportunityIntelligenceRepository
 ): Express {
   const application: Express = express();
   application.disable("x-powered-by");
@@ -60,6 +62,10 @@ export function createApp(
     "/api/v1/opportunities",
     authenticationMiddleware(identityVerifier),
     createAutomationOpportunitiesRouter(opportunityRepository)
+  );
+  application.use(
+    "/api/v1/opportunities/:opportunityId",
+    createOpportunityIntelligenceRouter(opportunityIntelligenceRepository)
   );
 
   application.use((_request, response) => {

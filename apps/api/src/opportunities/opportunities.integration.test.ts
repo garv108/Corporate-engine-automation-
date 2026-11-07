@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../db/pool.js";
-import { OpportunityStatusTransitionError, postgresAutomationOpportunityRepository } from "./opportunities.js";
+import { OpportunityAlternativesIncompleteError, OpportunityBusinessCaseRequiredError, OpportunityStatusTransitionError, postgresAutomationOpportunityRepository } from "./opportunities.js";
+import { postgresOpportunityIntelligenceRepository } from "./opportunity-intelligence.js";
 
 const tenantA = randomUUID();
 const tenantB = randomUUID();
@@ -47,6 +48,56 @@ describe("Automation Opportunities PostgreSQL tenant isolation", () => {
     await pool.query("DELETE FROM departments WHERE tenant_id = ANY($1::uuid[])", [[tenantA, tenantB]]);
     await pool.query("DELETE FROM tenants WHERE id = ANY($1::uuid[])", [[tenantA, tenantB]]);
   }, 15_000);
+
+  it("requires two assessed intervention candidates before comparing alternatives", async () => {
+    await postgresAutomationOpportunityRepository.update(tenantA, opportunityA, actorId, { status: "qualified" });
+    await expect(
+      postgresAutomationOpportunityRepository.update(tenantA, opportunityA, actorId, { status: "alternatives_compared" })
+    ).rejects.toBeInstanceOf(OpportunityAlternativesIncompleteError);
+
+    const evidence = await postgresOpportunityIntelligenceRepository.createEvidence(tenantA, opportunityA, actorId, {
+      sourceKind: "direct_observation",
+      claim: "An operator enters invoice details twice.",
+      sourceLabel: "Operations walkthrough",
+      classification: "internal"
+    });
+    const candidates = await Promise.all([
+      postgresOpportunityIntelligenceRepository.createIntervention(tenantA, opportunityA, actorId, {
+        interventionType: "automation",
+        title: "Automate invoice handoff",
+        description: "Transfer validated invoice details into the second system."
+      }),
+      postgresOpportunityIntelligenceRepository.createIntervention(tenantA, opportunityA, actorId, {
+        interventionType: "process_redesign",
+        title: "Remove duplicate entry",
+        description: "Capture invoice information once and route it to both review steps."
+      })
+    ]);
+    const dimensions = {
+      expectedImpact: { score: 4, rationale: "Removes a repeated manual handling step." },
+      feasibility: { score: 4, rationale: "The current tools support a shared record." },
+      implementationEffort: { score: 2, rationale: "The change is limited to intake and routing." },
+      operationalRisk: { score: 2, rationale: "Existing human approval remains in place." },
+      evidenceStrength: { score: 3, rationale: "A sample process was observed." }
+    };
+    for (const candidate of candidates) {
+      await postgresOpportunityIntelligenceRepository.createAssessment(tenantA, opportunityA, candidate.id, actorId, {
+        dimensionScores: dimensions,
+        rationale: "This candidate has been compared against the observed duplicate entry.",
+        assumptions: [],
+        expectedImpact: {},
+        evidenceIds: [evidence.id]
+      });
+    }
+
+    const compared = await postgresAutomationOpportunityRepository.update(
+      tenantA, opportunityA, actorId, { status: "alternatives_compared" }
+    );
+    expect(compared?.status).toBe("alternatives_compared");
+    await expect(
+      postgresAutomationOpportunityRepository.update(tenantA, opportunityA, actorId, { status: "business_case_drafted" })
+    ).rejects.toBeInstanceOf(OpportunityBusinessCaseRequiredError);
+  });
 
   it("lists only opportunities belonging to the requested tenant", async () => {
     const page = await postgresAutomationOpportunityRepository.list(tenantA, { limit: 50, after: null });

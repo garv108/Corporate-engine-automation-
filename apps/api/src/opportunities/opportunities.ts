@@ -368,6 +368,11 @@ export function createAutomationOpportunitiesRouter(repository: AutomationOpport
     if (!parsedId.success) return validationError(response, "Opportunity ID must be a UUID");
     const parsed = updateOpportunitySchema.safeParse(request.body);
     if (!parsed.success) return validationError(response, parsed.error.issues[0]?.message ?? "Invalid opportunity payload");
+    if (parsed.data.status === "approved_for_design" && !principal.permissions.includes("opportunities:approve")) {
+      return response.status(403).json({
+        error: { code: "FORBIDDEN", message: "Opportunity design approval permission is required" }
+      });
+    }
     try {
       const opportunity = await repository.update(principal.tenantId, parsedId.data, principal.subject, parsed.data);
       if (!opportunity) return response.status(404).json({ error: { code: "NOT_FOUND", message: "Opportunity not found" } });

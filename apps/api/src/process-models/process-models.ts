@@ -646,7 +646,7 @@ export const postgresProcessModelRepository: ProcessModelRepository = {
       }
       if (current.rows[0]!.status !== "draft") throw new ProcessModelStateError(current.rows[0]!.status, "review facts for");
       const updated = await client.query(
-        "UPDATE business_process_model_facts SET review_state=$5 " +
+        "UPDATE business_process_model_facts SET review_state=$4 " +
         "WHERE tenant_id=$1 AND model_version_id=$2 AND id=$3 " +
         "RETURNING id, field_path AS \"fieldPath\", value, provenance_kind AS \"provenanceKind\", review_state AS \"reviewState\", " +
         "step_id AS \"stepId\", evidence_id AS \"evidenceId\", recorded_by AS \"recordedBy\", recorded_at AS \"recordedAt\"",

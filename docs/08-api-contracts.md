@@ -12,7 +12,8 @@ The API keeps database access, authentication, tenant resolution, authorization,
 |---|---|---|
 | Health | `GET /api/v1/health` | Implemented |
 | Departments | `GET/POST /departments`, `GET/PATCH /departments/{id}` | Implemented |
-| Business processes | `GET/POST /business-processes`, `GET/PATCH /business-processes/{id}` | Implemented |\n| Process models | `GET/POST /business-processes/{processId}/models`, `GET/PUT /business-processes/{processId}/models/{modelVersionId}`, `POST .../{modelVersionId}/confirm`, `POST .../{modelVersionId}/publish`, `POST .../{modelVersionId}/facts/{factId}/review` | Implemented as the M1-A versioned process-map foundation |
+| Business processes | `GET/POST /business-processes`, `GET/PATCH /business-processes/{id}` | Implemented |
+| Process models | `GET/POST /business-processes/{processId}/models`, `GET/PUT /business-processes/{processId}/models/{modelVersionId}`, `POST .../{modelVersionId}/confirm`, `POST .../{modelVersionId}/publish`, `POST .../{modelVersionId}/facts/{factId}/review` | Implemented as the M1-A versioned process-map foundation |
 | Automation opportunities | `GET/POST /opportunities`, `GET/PATCH /opportunities/{id}` | Implemented as a basic persistence/API slice; not a complete discovery or workflow-library feature |
 
 ### Collection pagination
@@ -54,17 +55,16 @@ An opportunity can have several intervention candidates, including automation, p
 
 The following are design targets for the Work Mapping and Guided Discovery milestone and later phases, not claims about current route availability.
 
-### Work map and guided discovery
+### Guided discovery — planned M1-B
 
 - `POST /process-discovery/sessions` — create a discovery session from an initial description.
 - `GET /process-discovery/sessions/{id}` — retrieve its state and current draft.
 - `POST /process-discovery/sessions/{id}/turns` — submit an answer and receive the next focused question or completion explanation.
 - `POST /process-discovery/sessions/{id}/confirm` — confirm the user-reviewed map.
-- `GET /processes` — search confirmed process definitions.
-- `POST /processes` — create a process definition/version from a confirmed map.
-- `GET /processes/{id}/versions/{version}` — retrieve an immutable process version.
 
-A discovery session must preserve conversation state, current structured facts, fact provenance, uncertainty, unresolved questions, schema version and user edits. A completeness gate must explain which required facts remain unknown. An AI statement must not be treated as an observed fact without user/system confirmation.
+The M1-A model routes are implemented under the existing Business Process Catalogue. They create and retrieve structured model versions, preserve branching steps/transitions, evidence references and field-level provenance. Draft models can be edited; confirmed versions are immutable; publishing is a separate permissioned action. Fact review is explicit, and verification requires a separate permission. None of these actions authorizes workflow execution.
+
+A future discovery session must preserve conversation state, current structured facts, fact provenance, uncertainty, unresolved questions, schema version and user edits. A completeness gate must explain which required facts remain unknown. An AI statement must not be treated as an observed fact without user/system confirmation.
 
 ### Opportunity assessment
 

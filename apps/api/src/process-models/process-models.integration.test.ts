@@ -116,7 +116,7 @@ describe("Process Models PostgreSQL tenant integrity and lifecycle", () => {
     expect(model?.evidence).toHaveLength(1);
     expect(model?.facts).toHaveLength(2);
     expect(model?.facts[0]?.reviewState).toBe("unreviewed");
-    expect(model?.facts[1]?.provenanceKind).toBe("ai_hypothesis");
+    expect(model?.facts.find((fact) => fact.provenanceKind === "ai_hypothesis")).toBeDefined();
     expect(model?.transitions[0]?.fromStepId).not.toBe(model?.transitions[0]?.toStepId);
     const fetched = await postgresProcessModelRepository.get(tenantA, processA, model!.id);
     expect(fetched?.contentHash).toBe(model?.contentHash);

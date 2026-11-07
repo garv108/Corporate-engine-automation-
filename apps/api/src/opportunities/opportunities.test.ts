@@ -187,12 +187,24 @@ describe("tenant-scoped Automation Opportunities API", () => {
     expect(repository.update).not.toHaveBeenCalled();
   });
 
-  it("returns a conflict when an opportunity skips a lifecycle stage", async () => {
+  it("requires a distinct permission to approve an opportunity for design", async () => {
+    const repository = createRepository();
+    const response = await request(createApp(createVerifier(), undefined, undefined, repository))
+      .patch("/api/v1/opportunities/" + opportunityId)
+      .send({ status: "approved_for_design" });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe("FORBIDDEN");
+    expect(repository.update).not.toHaveBeenCalled();
+  });
+
+  it("returns a conflict when an authorized approver attempts to skip a lifecycle stage", async () => {
     const repository = createRepository();
     vi.mocked(repository.update).mockRejectedValue(
       new OpportunityStatusTransitionError("discovered", "approved_for_design")
     );
-    const response = await request(createApp(createVerifier(), undefined, undefined, repository))
+    const approver = { ...principal, permissions: [...principal.permissions, "opportunities:approve"] };
+    const response = await request(createApp(createVerifier(approver), undefined, undefined, repository))
       .patch("/api/v1/opportunities/" + opportunityId)
       .send({ status: "approved_for_design" });
 

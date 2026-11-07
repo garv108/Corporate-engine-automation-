@@ -63,7 +63,7 @@ export type DiscoverySessionRepository = {
   get(tenantId: string, sessionId: string): Promise<DiscoverySession | null>;
   list(tenantId: string, pagination: PaginationOptions): Promise<Page<any>>;
   turn(tenantId: string, sessionId: string, actorId: string, input: {
-    message: string; factUpdates: DiscoveryFactUpdate[]; expectedRevision: number; answerToQuestionId?: string
+    message: string; factUpdates: DiscoveryFactUpdate[]; expectedRevision: number; answerToQuestionId?: string | undefined
   }): Promise<DiscoverySession | null>;
   confirm(tenantId: string, sessionId: string, actorId: string, expectedRevision: number, acknowledgeUnresolved?: boolean): Promise<DiscoverySession | null>;
 };
@@ -345,7 +345,7 @@ export class PostgresDiscoverySessionRepository implements DiscoverySessionRepos
   }
 
   async turn(tenantId: string, sessionId: string, actorId: string, input: {
-    message: string; factUpdates: DiscoveryFactUpdate[]; expectedRevision: number; answerToQuestionId?: string
+    message: string; factUpdates: DiscoveryFactUpdate[]; expectedRevision: number; answerToQuestionId?: string | undefined
   }): Promise<DiscoverySession | null> {
     const client = await pool.connect();
     try {

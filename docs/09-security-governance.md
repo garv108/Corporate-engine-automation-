@@ -12,7 +12,7 @@ Sandbox with network allowlists, synthetic data, resource limits, timeouts and n
 
 ## Identity and tenant membership
 
-- OIDC credentials are accepted only as signed JWT access tokens with protected \`typ=at+jwt\`; do not accept ID tokens as API bearer credentials.
+- OIDC credentials are accepted only as signed JWT access tokens with protected `typ=at+jwt`; do not accept ID tokens as API bearer credentials.
 - Validate signature, issuer, audience, expiration, required claims and an explicit signing-algorithm allowlist.
 - Resolve tenant membership using the signed internal tenant claim plus exact issuer and subject. The tenant and membership must both be active.
 - Roles and permissions are authoritative only when loaded from the tenant membership record. JWT permission claims are ignored.

@@ -73,3 +73,10 @@ Before configuring a provider or enabling OIDC in a deployed environment, verify
 - memberships are provisioned with least privilege and changes are audited.
 
 No identity provider is selected by this code change. Provider compatibility, staging configuration and credentials require a separate explicit decision. Production rollout is not part of this PR.
+
+
+## References
+
+- RFC 9068 — JSON Web Token (JWT) Profile for OAuth 2.0 Access Tokens: https://www.rfc-editor.org/rfc/rfc9068
+- RFC 8725 — JSON Web Token Best Current Practices: https://www.rfc-editor.org/rfc/rfc8725
+- `jose` JWT verification API: https://github.com/panva/jose

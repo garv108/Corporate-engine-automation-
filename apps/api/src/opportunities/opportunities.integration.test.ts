@@ -49,9 +49,29 @@ describe("Automation Opportunities PostgreSQL tenant isolation", () => {
   }, 15_000);
 
   it("lists only opportunities belonging to the requested tenant", async () => {
-    const rows = await postgresAutomationOpportunityRepository.list(tenantA);
-    expect(rows.map((row) => row.id)).toContain(opportunityA);
-    expect(rows.map((row) => row.id)).not.toContain(opportunityB);
+    const page = await postgresAutomationOpportunityRepository.list(tenantA, { limit: 50, after: null });
+    expect(page.items.map((row) => row.id)).toContain(opportunityA);
+    expect(page.items.map((row) => row.id)).not.toContain(opportunityB);
+  });
+
+
+  it("uses stable keyset pagination with the ID tie-breaker for equal titles", async () => {
+    const firstId = randomUUID();
+    const secondId = randomUUID();
+    await insertOpportunity(firstId, tenantA, processA, "Same opportunity title");
+    await insertOpportunity(secondId, tenantA, processA, "Same opportunity title");
+
+    const firstPage = await postgresAutomationOpportunityRepository.list(tenantA, { limit: 1, after: null });
+    expect(firstPage.items).toHaveLength(1);
+    expect(firstPage.hasMore).toBe(true);
+
+    const firstItem = firstPage.items[0]!;
+    const secondPage = await postgresAutomationOpportunityRepository.list(tenantA, {
+      limit: 1,
+      after: { name: firstItem.title, id: firstItem.id }
+    });
+    expect(secondPage.items).toHaveLength(1);
+    expect(secondPage.items[0]?.id).not.toBe(firstItem.id);
   });
 
   it("does not reveal another tenant's opportunity by ID", async () => {

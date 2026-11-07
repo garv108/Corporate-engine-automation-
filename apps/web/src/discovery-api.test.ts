@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createDiscoveryApi, DiscoveryApiError } from "./discovery-api";
+import { createDiscoveryApi } from "./discovery-api";
 
 function response(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {

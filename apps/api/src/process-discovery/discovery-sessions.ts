@@ -451,13 +451,26 @@ export class PostgresDiscoverySessionRepository implements DiscoverySessionRepos
 
 export const postgresDiscoverySessionRepository = new PostgresDiscoverySessionRepository();
 
+const factUpdateSchema = z.object({
+  fieldPath: z.string().trim().min(1).max(256),
+  value: z.unknown()
+}).strict().superRefine((item, context) => {
+  if (!Object.prototype.hasOwnProperty.call(item, "value")) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["value"], message: "Fact value is required" });
+  }
+}).transform((item): DiscoveryFactUpdate => ({
+  fieldPath: item.fieldPath,
+  value: item.value
+}));
+
 const createSchema = z.object({
   initialDescription: z.string().trim().min(10).max(10000),
-  factUpdates: z.array(z.object({ fieldPath: z.string().trim().min(1).max(256), value: z.custom<unknown>(() => true) }).strict()).max(20).default([])
+  factUpdates: z.array(factUpdateSchema).max(20).default([])
 }).strict();
+
 const turnSchema = z.object({
   message: z.string().trim().min(1).max(10000),
-  factUpdates: z.array(z.object({ fieldPath: z.string().trim().min(1).max(256), value: z.custom<unknown>(() => true) }).strict()).min(1).max(20),
+  factUpdates: z.array(factUpdateSchema).min(1).max(20),
   expectedRevision: z.number().int().nonnegative(),
   answerToQuestionId: z.string().trim().min(1).max(64).optional()
 }).strict();

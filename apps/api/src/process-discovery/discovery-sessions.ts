@@ -558,7 +558,7 @@ export class PostgresDiscoverySessionRepository implements DiscoverySessionRepos
           sourceReference: "cias://process-discovery/sessions/" + sessionId,
           sourceVersion: "revision-" + current.revision,
           classification: current.classification,
-          ...(current.confirmedAt ? { retrievedAt: current.confirmedAt } : {})
+          ...(current.confirmedAt ? { retrievedAt: new Date(current.confirmedAt).toISOString() } : {})
         }],
         facts: currentFacts.map((fact: any) => ({
           fieldPath: fact.fieldPath,

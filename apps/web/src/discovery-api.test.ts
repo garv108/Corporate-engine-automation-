@@ -35,7 +35,7 @@ describe("discovery API client", () => {
       error: { code: "UNAUTHENTICATED", message: "Authentication is required" }
     }));
     const api = createDiscoveryApi(fetcher);
-    await expect(api.list()).rejects.toMatchObject<Partial<DiscoveryApiError>>({
+    await expect(api.list()).rejects.toMatchObject({
       status: 401,
       code: "UNAUTHENTICATED"
     });

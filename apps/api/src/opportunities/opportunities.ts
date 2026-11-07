@@ -3,6 +3,12 @@ import { z } from "zod";
 import { pool } from "../db/pool.js";
 import { requirePermission, type AuthenticatedPrincipal } from "../auth/auth.js";
 import type { PoolClient } from "pg";
+import {
+  encodePaginationCursor,
+  parsePaginationQuery,
+  type Page,
+  type PaginationOptions
+} from "../pagination/cursor-pagination.js";
 
 export const opportunityStatuses = [
   "discovered",
@@ -77,7 +83,7 @@ export type AutomationOpportunityUpdate = {
 };
 
 export interface AutomationOpportunityRepository {
-  list(tenantId: string): Promise<AutomationOpportunity[]>;
+  list(tenantId: string, pagination: PaginationOptions): Promise<Page<AutomationOpportunity>>;
   get(tenantId: string, id: string): Promise<AutomationOpportunity | null>;
   create(tenantId: string, actorId: string, input: AutomationOpportunityInput): Promise<AutomationOpportunity>;
   update(tenantId: string, id: string, actorId: string, input: AutomationOpportunityUpdate): Promise<AutomationOpportunity | null>;
@@ -113,12 +119,17 @@ async function writeAuditEvent(
 }
 
 export const postgresAutomationOpportunityRepository: AutomationOpportunityRepository = {
-  async list(tenantId) {
+  async list(tenantId, pagination) {
     const result = await pool.query<OpportunityRow>(
-      `SELECT ${selectColumns} FROM automation_opportunities WHERE tenant_id = $1 ORDER BY title, id`,
-      [tenantId]
+      `SELECT ${selectColumns}
+       FROM automation_opportunities
+       WHERE tenant_id = $1
+         AND ($2::text IS NULL OR (title, id) > ($2::text, $3::uuid))
+       ORDER BY title ASC, id ASC
+       LIMIT $4`,
+      [tenantId, pagination.after?.name ?? null, pagination.after?.id ?? null, pagination.limit + 1]
     );
-    return result.rows;
+    return { items: result.rows.slice(0, pagination.limit), hasMore: result.rows.length > pagination.limit };
   },
 
   async get(tenantId, id) {
@@ -298,13 +309,33 @@ function handleOpportunityError(error: unknown, response: Response): boolean {
   return false;
 }
 
+function sendOpportunityPage(
+  response: Response,
+  page: Page<AutomationOpportunity>,
+  pagination: PaginationOptions
+): void {
+  const lastItem = page.items.at(-1);
+  response.json({
+    data: page.items,
+    pagination: {
+      limit: pagination.limit,
+      nextCursor: page.hasMore && lastItem
+        ? encodePaginationCursor({ name: lastItem.title, id: lastItem.id })
+        : null
+    }
+  });
+}
+
 export function createAutomationOpportunitiesRouter(repository: AutomationOpportunityRepository): ExpressRouter {
   const router = Router();
 
   router.get("/", requirePermission("opportunities:read"), async (request, response) => {
     const principal = currentPrincipal(request, response);
     if (!principal) return;
-    response.json({ data: await repository.list(principal.tenantId) });
+    const parsedPagination = parsePaginationQuery(request.query);
+    if (!parsedPagination.success) return validationError(response, parsedPagination.message);
+    const page = await repository.list(principal.tenantId, parsedPagination.data);
+    sendOpportunityPage(response, page, parsedPagination.data);
   });
 
   router.get("/:id", requirePermission("opportunities:read"), async (request, response) => {

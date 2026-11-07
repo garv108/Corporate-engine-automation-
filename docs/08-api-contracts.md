@@ -15,7 +15,7 @@ The API keeps database access, authentication, tenant resolution, authorization,
 | Business processes | `GET/POST /business-processes`, `GET/PATCH /business-processes/{id}` | Implemented |
 | Process models | `GET/POST /business-processes/{processId}/models`, `GET/PUT /business-processes/{processId}/models/{modelVersionId}`, `POST .../{modelVersionId}/confirm`, `POST .../{modelVersionId}/publish`, `POST .../{modelVersionId}/facts/{factId}/review` | Implemented as the M1-A versioned process-map foundation |
 | Process discovery sessions | `GET/POST /process-discovery/sessions`, `GET /process-discovery/sessions/{sessionId}`, `POST .../{sessionId}/turns`, `POST .../{sessionId}/confirm`, `POST .../{sessionId}/convert` | Implemented as the M1-B persistence, deterministic completeness and confirmed-snapshot conversion foundation |
-| Automation opportunities | `GET/POST /opportunities`, `GET/PATCH /opportunities/{id}` | Implemented as a basic persistence/API slice; not a complete discovery or workflow-library feature |
+| Automation opportunities | `GET/POST /opportunities`, `GET/PATCH /opportunities/{id}`, `GET/POST /opportunities/{id}/evidence`, `GET/POST /opportunities/{id}/interventions`, `PATCH /opportunities/{id}/interventions/{interventionId}`, `GET/POST /opportunities/{id}/interventions/{interventionId}/assessments` | Implemented as the M1-C evidence and intervention-assessment foundation; not a complete workflow-library or business-case feature |
 
 ### Collection pagination
 
@@ -51,6 +51,21 @@ Opportunity status represents the business decision lifecycle only:
 Opportunity creation always begins in `discovered`. Moving to `approved_for_design` requires the separate `opportunities:approve` permission in addition to the general update permission. The current slice records this decision in the audit trail; a richer approval case with named approver, rationale and evidence will be added when the governance module is implemented. The API does not accept unexplained caller-supplied feasibility, impact, complexity or confidence scores as verified assessments. A future assessment record must include its scoring-method version, dimensions, evidence, assumptions, evaluator and timestamp. Evidence references are currently bounded strings; they are not yet normalized evidence relationships with referential integrity.
 
 An opportunity can have several intervention candidates, including automation, process redesign, policy/approval simplification, training, capacity changes and data-quality remediation. It is not itself a workflow or permission to execute one.
+
+### M1-C evidence and intervention assessment
+
+Implemented endpoints:
+
+- \`GET/POST /opportunities/{opportunityId}/evidence\` — list or add immutable, source-linked evidence records.
+- \`GET/POST /opportunities/{opportunityId}/interventions\` — list or create automation and non-automation intervention candidates.
+- \`PATCH /opportunities/{opportunityId}/interventions/{interventionId}\` — make a validated candidate status change.
+- \`GET/POST /opportunities/{opportunityId}/interventions/{interventionId}/assessments\` — list immutable assessment versions or create a new assessment.
+
+Assessment creation requires one or more evidence IDs belonging to the same tenant and opportunity. The server computes the aggregate score using \`CIAS-INTERVENTION-V1\`; client-supplied aggregate scores are rejected. The method rates expected impact, feasibility, implementation effort, operational risk and evidence strength, with explicit dimension rationales. The score is a transparent comparison heuristic, not confidence, probability of success, financial ROI or authorization.
+
+The initial status transition to \`alternatives_compared\` requires at least two eligible intervention candidates, each with an assessment. The transition to \`business_case_drafted\` remains blocked until a separate business-case record is implemented. Selecting an intervention does not approve workflow design or production execution.
+
+Separate permissions are required for evidence creation (\`opportunities:evidence:create\`), intervention creation (\`opportunities:interventions:create\`), intervention status changes (\`opportunities:interventions:update\`) and assessment (\`opportunities:assess\`).
 
 ## Planned contracts — not implemented yet
 

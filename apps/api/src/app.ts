@@ -3,6 +3,7 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import helmet from "helmet";
 import { config } from "./config.js";
 import { authenticationMiddleware, type IdentityVerifier } from "./auth/auth.js";
+import { createConfiguredIdentityVerifier } from "./auth/oidc.js";
 import { createDepartmentsRouter, postgresDepartmentRepository, type DepartmentRepository } from "./departments/departments.js";
 import { createBusinessProcessesRouter, postgresBusinessProcessRepository, type BusinessProcessRepository } from "./business-processes/business-processes.js";
 import { createAutomationOpportunitiesRouter, postgresAutomationOpportunityRepository, type AutomationOpportunityRepository } from "./opportunities/opportunities.js";
@@ -10,12 +11,10 @@ import { healthRouter } from "./routes/health.js";
 import { createProcessModelsRouter, postgresProcessModelRepository, type ProcessModelRepository } from "./process-models/process-models.js";
 import { createDiscoverySessionsRouter, postgresDiscoverySessionRepository, type DiscoverySessionRepository } from "./process-discovery/discovery-sessions.js";
 
-const denyByDefaultVerifier: IdentityVerifier = {
-  verify: async () => null
-};
+const configuredIdentityVerifier: IdentityVerifier = createConfiguredIdentityVerifier(config);
 
 export function createApp(
-  identityVerifier: IdentityVerifier = denyByDefaultVerifier,
+  identityVerifier: IdentityVerifier = configuredIdentityVerifier,
   departmentRepository: DepartmentRepository = postgresDepartmentRepository,
   businessProcessRepository: BusinessProcessRepository = postgresBusinessProcessRepository,
   opportunityRepository: AutomationOpportunityRepository = postgresAutomationOpportunityRepository,

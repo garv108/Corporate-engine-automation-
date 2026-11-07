@@ -3,6 +3,22 @@ import { z } from "zod";
 import { pool } from "../db/pool.js";
 import { requirePermission, type AuthenticatedPrincipal } from "../auth/auth.js";
 import type { PoolClient } from "pg";
+import {
+  encodePaginationCursor,
+  parsePaginationQuery,
+  type Page,
+  type PaginationOptions
+} from "../pagination/cursor-pagination.js";
+
+export const businessProcessSensitivities = [
+  "unknown",
+  "public",
+  "internal",
+  "confidential",
+  "sensitive_workforce",
+  "restricted"
+] as const;
+export type BusinessProcessSensitivity = (typeof businessProcessSensitivities)[number];
 
 export type BusinessProcess = {
   id: string;
@@ -13,7 +29,7 @@ export type BusinessProcess = {
   systems: string[];
   inputs: string[];
   outputs: string[];
-  sensitivity: string;
+  sensitivity: BusinessProcessSensitivity;
 };
 
 export type BusinessProcessInput = {
@@ -23,7 +39,7 @@ export type BusinessProcessInput = {
   systems?: string[] | undefined;
   inputs?: string[] | undefined;
   outputs?: string[] | undefined;
-  sensitivity?: string | undefined;
+  sensitivity?: BusinessProcessSensitivity | undefined;
 };
 
 export type BusinessProcessUpdate = {
@@ -33,18 +49,17 @@ export type BusinessProcessUpdate = {
   systems?: string[] | undefined;
   inputs?: string[] | undefined;
   outputs?: string[] | undefined;
-  sensitivity?: string | undefined;
+  sensitivity?: BusinessProcessSensitivity | undefined;
 };
 
 export interface BusinessProcessRepository {
-  list(tenantId: string): Promise<BusinessProcess[]>;
+  list(tenantId: string, pagination: PaginationOptions): Promise<Page<BusinessProcess>>;
   get(tenantId: string, id: string): Promise<BusinessProcess | null>;
   create(tenantId: string, actorId: string, input: BusinessProcessInput): Promise<BusinessProcess>;
   update(tenantId: string, id: string, actorId: string, input: BusinessProcessUpdate): Promise<BusinessProcess | null>;
 }
 
 type BusinessProcessRow = BusinessProcess;
-
 const selectColumns = `
   id,
   tenant_id AS "tenantId",
@@ -72,12 +87,17 @@ async function writeAuditEvent(
 }
 
 export const postgresBusinessProcessRepository: BusinessProcessRepository = {
-  async list(tenantId) {
+  async list(tenantId, pagination) {
     const result = await pool.query<BusinessProcessRow>(
-      `SELECT ${selectColumns} FROM business_processes WHERE tenant_id = $1 ORDER BY name, id`,
-      [tenantId]
+      `SELECT ${selectColumns}
+       FROM business_processes
+       WHERE tenant_id = $1
+         AND ($2::text IS NULL OR (name, id) > ($2::text, $3::uuid))
+       ORDER BY name ASC, id ASC
+       LIMIT $4`,
+      [tenantId, pagination.after?.name ?? null, pagination.after?.id ?? null, pagination.limit + 1]
     );
-    return result.rows;
+    return { items: result.rows.slice(0, pagination.limit), hasMore: result.rows.length > pagination.limit };
   },
 
   async get(tenantId, id) {
@@ -175,6 +195,7 @@ export const postgresBusinessProcessRepository: BusinessProcessRepository = {
 };
 
 const stringArray = z.array(z.string().trim().min(1).max(200)).max(100);
+const sensitivitySchema = z.enum(businessProcessSensitivities);
 const createBusinessProcessSchema = z.object({
   departmentId: z.string().uuid().nullable().optional(),
   name: z.string().trim().min(2).max(160),
@@ -182,7 +203,7 @@ const createBusinessProcessSchema = z.object({
   systems: stringArray.optional(),
   inputs: stringArray.optional(),
   outputs: stringArray.optional(),
-  sensitivity: z.string().trim().min(1).max(40).optional()
+  sensitivity: sensitivitySchema.optional()
 }).strict();
 
 const updateBusinessProcessSchema = z.object({
@@ -192,7 +213,7 @@ const updateBusinessProcessSchema = z.object({
   systems: stringArray.optional(),
   inputs: stringArray.optional(),
   outputs: stringArray.optional(),
-  sensitivity: z.string().trim().min(1).max(40).optional()
+  sensitivity: sensitivitySchema.optional()
 }).strict().refine((value) => Object.keys(value).length > 0, "At least one field must be provided");
 
 const idSchema = z.string().uuid();
@@ -210,15 +231,28 @@ function validationError(response: Response, message: string): void {
 }
 
 function handleConstraintError(error: unknown, response: Response): boolean {
-  const code = (error as { code?: string }).code;
-  if (code === "23503") {
-    response.status(400).json({
-      error: { code: "INVALID_DEPARTMENT", message: "The selected department is not available in this tenant" }
-    });
-    return true;
-  }
-  response.status(500).json({ error: { code: "INTERNAL_ERROR", message: "The business process could not be saved" } });
+  if ((error as { code?: string }).code !== "23503") return false;
+  response.status(400).json({
+    error: { code: "INVALID_DEPARTMENT", message: "The selected department is not available in this tenant" }
+  });
   return true;
+}
+
+function sendPage<T extends { name: string; id: string }>(
+  response: Response,
+  page: Page<T>,
+  pagination: PaginationOptions
+): void {
+  const lastItem = page.items.at(-1);
+  response.json({
+    data: page.items,
+    pagination: {
+      limit: pagination.limit,
+      nextCursor: page.hasMore && lastItem
+        ? encodePaginationCursor({ name: lastItem.name, id: lastItem.id })
+        : null
+    }
+  });
 }
 
 export function createBusinessProcessesRouter(repository: BusinessProcessRepository): ExpressRouter {
@@ -227,7 +261,10 @@ export function createBusinessProcessesRouter(repository: BusinessProcessReposit
   router.get("/", requirePermission("business_processes:read"), async (request, response) => {
     const principal = currentPrincipal(request, response);
     if (!principal) return;
-    response.json({ data: await repository.list(principal.tenantId) });
+    const parsedPagination = parsePaginationQuery(request.query);
+    if (!parsedPagination.success) return validationError(response, parsedPagination.message);
+    const page = await repository.list(principal.tenantId, parsedPagination.data);
+    sendPage(response, page, parsedPagination.data);
   });
 
   router.get("/:id", requirePermission("business_processes:read"), async (request, response) => {
@@ -249,7 +286,7 @@ export function createBusinessProcessesRouter(repository: BusinessProcessReposit
       const process = await repository.create(principal.tenantId, principal.subject, parsed.data);
       response.status(201).json({ data: process });
     } catch (error) {
-      handleConstraintError(error, response);
+      if (!handleConstraintError(error, response)) throw error;
     }
   });
 
@@ -265,7 +302,7 @@ export function createBusinessProcessesRouter(repository: BusinessProcessReposit
       if (!process) return response.status(404).json({ error: { code: "NOT_FOUND", message: "Business process not found" } });
       response.json({ data: process });
     } catch (error) {
-      handleConstraintError(error, response);
+      if (!handleConstraintError(error, response)) throw error;
     }
   });
 

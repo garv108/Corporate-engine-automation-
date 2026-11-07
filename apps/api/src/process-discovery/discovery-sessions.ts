@@ -164,14 +164,23 @@ function parseValue(path: string, value: unknown): unknown {
   return result.data;
 }
 
-function applyUpdates(current: DiscoveryDraft, updates: DiscoveryFactUpdate[]): DiscoveryDraft {
-  if (!updates.length) return current;
+function validateFactUpdates(updates: DiscoveryFactUpdate[]): void {
   if (updates.length > 20) throw new DiscoverySessionInputError("A single turn may update at most 20 fact paths.");
-  const draft = JSON.parse(JSON.stringify(current)) as DiscoveryDraft;
   const seen = new Set<string>();
   for (const update of updates) {
-    if (seen.has(update.fieldPath)) throw new DiscoverySessionInputError("A field path may only be updated once per turn: " + update.fieldPath);
+    if (seen.has(update.fieldPath)) {
+      throw new DiscoverySessionInputError("A field path may only be updated once per turn: " + update.fieldPath);
+    }
     seen.add(update.fieldPath);
+    parseValue(update.fieldPath, update.value);
+  }
+}
+
+function applyUpdates(current: DiscoveryDraft, updates: DiscoveryFactUpdate[]): DiscoveryDraft {
+  if (!updates.length) return current;
+  validateFactUpdates(updates);
+  const draft = JSON.parse(JSON.stringify(current)) as DiscoveryDraft;
+  for (const update of updates) {
     const value = parseValue(update.fieldPath, update.value);
     switch (update.fieldPath) {
       case "purpose": draft.purpose = value as string; break;
@@ -539,6 +548,7 @@ export function createDiscoverySessionsRouter(repository: DiscoverySessionReposi
     const parsed = createSchema.safeParse(request.body);
     if (!parsed.success) return invalid(response, parsed.error.issues[0]?.message ?? "Invalid discovery session payload");
     try {
+      validateFactUpdates(parsed.data.factUpdates);
       const session = await repository.create(request.principal!.tenantId, request.principal!.subject, parsed.data);
       response.status(201).json({ data: session });
     } catch (error) {
@@ -560,6 +570,7 @@ export function createDiscoverySessionsRouter(repository: DiscoverySessionReposi
     if (!id.success) return invalid(response, "Discovery session ID must be a UUID");
     if (!parsed.success) return invalid(response, parsed.error.issues[0]?.message ?? "Invalid discovery turn payload");
     try {
+      validateFactUpdates(parsed.data.factUpdates);
       const session = await repository.turn(request.principal!.tenantId, id.data, request.principal!.subject, parsed.data);
       if (!session) return response.status(404).json({ error: { code: "NOT_FOUND", message: "Discovery session not found" } });
       response.json({ data: session });

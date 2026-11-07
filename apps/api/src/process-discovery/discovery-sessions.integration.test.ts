@@ -111,7 +111,7 @@ describe("Process Discovery Sessions PostgreSQL persistence and lifecycle", () =
     expect(updated?.completeness.openUncertainties).toHaveLength(1);
     await expect(
       postgresDiscoverySessionRepository.confirm(tenantA, session.id, actorId, updated!.revision)
-    ).rejects.toThrow("acknowledge it explicitly");
+    ).rejects.toThrow("Acknowledge it explicitly");
     const confirmed = await postgresDiscoverySessionRepository.confirm(
       tenantA, session.id, actorId, updated!.revision, true
     );

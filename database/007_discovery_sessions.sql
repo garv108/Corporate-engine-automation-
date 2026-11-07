@@ -63,7 +63,7 @@ CREATE TABLE process_discovery_session_fact_events (
  reviewed_by TEXT,
  reviewed_at TIMESTAMPTZ,
  FOREIGN KEY (tenant_id,session_id,source_turn_id)
-   REFERENCES process_discovery_session_turns (tenant_id,session_id,id),
+   REFERENCES process_discovery_session_turns (tenant_id,session_id,id) ON DELETE CASCADE,
  CHECK (
   (review_state IN ('unreviewed','disputed','rejected') AND reviewed_by IS NULL AND reviewed_at IS NULL)
   OR (review_state IN ('user_confirmed','verified') AND reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL)

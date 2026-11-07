@@ -2,6 +2,7 @@ import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import type { AuthenticatedPrincipal, IdentityVerifier } from "../auth/auth.js";
 import { createApp } from "../app.js";
+import { encodePaginationCursor } from "../pagination/cursor-pagination.js";
 import {
   OpportunityStatusTransitionError,
   type AutomationOpportunity,
@@ -34,7 +35,7 @@ const opportunity: AutomationOpportunity = {
 
 function createRepository(): AutomationOpportunityRepository {
   return {
-    list: vi.fn().mockResolvedValue([opportunity]),
+    list: vi.fn().mockResolvedValue({ items: [opportunity], hasMore: false }),
     get: vi.fn().mockResolvedValue(opportunity),
     create: vi.fn().mockResolvedValue(opportunity),
     update: vi.fn().mockResolvedValue(opportunity)
@@ -53,7 +54,35 @@ describe("tenant-scoped Automation Opportunities API", () => {
       .set("x-tenant-id", tenantB);
 
     expect(response.status).toBe(200);
-    expect(repository.list).toHaveBeenCalledWith(tenantA);
+    expect(repository.list).toHaveBeenCalledWith(tenantA, { limit: 50, after: null });
+    expect(response.body.pagination).toEqual({ limit: 50, nextCursor: null });
+  });
+
+
+  it("returns an opaque cursor when another opportunity page exists", async () => {
+    const repository = createRepository();
+    vi.mocked(repository.list).mockResolvedValue({ items: [opportunity], hasMore: true });
+    const response = await request(createApp(createVerifier(), undefined, undefined, repository))
+      .get("/api/v1/opportunities?limit=1");
+
+    expect(response.status).toBe(200);
+    expect(repository.list).toHaveBeenCalledWith(tenantA, { limit: 1, after: null });
+    expect(response.body.pagination).toEqual({
+      limit: 1,
+      nextCursor: encodePaginationCursor({ name: opportunity.title, id: opportunity.id })
+    });
+  });
+
+  it("rejects invalid opportunity pagination parameters", async () => {
+    const repository = createRepository();
+    const invalidLimit = await request(createApp(createVerifier(), undefined, undefined, repository))
+      .get("/api/v1/opportunities?limit=101");
+    const invalidCursor = await request(createApp(createVerifier(), undefined, undefined, repository))
+      .get("/api/v1/opportunities?cursor=not-a-cursor");
+
+    expect(invalidLimit.status).toBe(400);
+    expect(invalidCursor.status).toBe(400);
+    expect(repository.list).not.toHaveBeenCalled();
   });
 
   it("rejects tenant identity supplied in the request body", async () => {

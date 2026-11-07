@@ -4,6 +4,44 @@ import { pool } from "../db/pool.js";
 import { requirePermission, type AuthenticatedPrincipal } from "../auth/auth.js";
 import type { PoolClient } from "pg";
 
+export const opportunityStatuses = [
+  "discovered",
+  "qualified",
+  "alternatives_compared",
+  "business_case_drafted",
+  "approval_pending",
+  "approved_for_design",
+  "deferred",
+  "rejected"
+] as const;
+
+export type OpportunityStatus = (typeof opportunityStatuses)[number];
+
+const statusTransitions: Record<OpportunityStatus, readonly OpportunityStatus[]> = {
+  discovered: ["qualified", "deferred", "rejected"],
+  qualified: ["alternatives_compared", "deferred", "rejected"],
+  alternatives_compared: ["business_case_drafted", "deferred", "rejected"],
+  business_case_drafted: ["approval_pending", "deferred", "rejected"],
+  approval_pending: ["approved_for_design", "deferred", "rejected"],
+  approved_for_design: [],
+  deferred: ["qualified", "rejected"],
+  rejected: []
+};
+
+export function canTransitionOpportunityStatus(from: OpportunityStatus, to: OpportunityStatus): boolean {
+  return from === to || statusTransitions[from].includes(to);
+}
+
+export class OpportunityStatusTransitionError extends Error {
+  constructor(
+    readonly from: string,
+    readonly to: OpportunityStatus
+  ) {
+    super(`Opportunity status cannot transition from "${from}" to "${to}"`);
+    this.name = "OpportunityStatusTransitionError";
+  }
+}
+
 export type AutomationOpportunity = {
   id: string;
   tenantId: string;
@@ -12,13 +50,9 @@ export type AutomationOpportunity = {
   title: string;
   problemStatement: string;
   proposedOutcome: string | null;
-  feasibilityScore: number | null;
-  impactScore: number | null;
-  complexityScore: number | null;
-  confidence: number | null;
   impactEstimate: Record<string, unknown>;
-  evidenceRefs: unknown[];
-  status: string;
+  evidenceRefs: string[];
+  status: OpportunityStatus;
 };
 
 export type AutomationOpportunityInput = {
@@ -27,13 +61,8 @@ export type AutomationOpportunityInput = {
   title: string;
   problemStatement: string;
   proposedOutcome?: string | null | undefined;
-  feasibilityScore?: number | null | undefined;
-  impactScore?: number | null | undefined;
-  complexityScore?: number | null | undefined;
-  confidence?: number | null | undefined;
   impactEstimate?: Record<string, unknown> | undefined;
-  evidenceRefs?: unknown[] | undefined;
-  status?: string | undefined;
+  evidenceRefs?: string[] | undefined;
 };
 
 export type AutomationOpportunityUpdate = {
@@ -42,13 +71,9 @@ export type AutomationOpportunityUpdate = {
   title?: string | undefined;
   problemStatement?: string | undefined;
   proposedOutcome?: string | null | undefined;
-  feasibilityScore?: number | null | undefined;
-  impactScore?: number | null | undefined;
-  complexityScore?: number | null | undefined;
-  confidence?: number | null | undefined;
   impactEstimate?: Record<string, unknown> | undefined;
-  evidenceRefs?: unknown[] | undefined;
-  status?: string | undefined;
+  evidenceRefs?: string[] | undefined;
+  status?: OpportunityStatus | undefined;
 };
 
 export interface AutomationOpportunityRepository {
@@ -68,10 +93,6 @@ const selectColumns = `
   title,
   problem_statement AS "problemStatement",
   proposed_outcome AS "proposedOutcome",
-  feasibility_score::float8 AS "feasibilityScore",
-  impact_score::float8 AS "impactScore",
-  complexity_score::float8 AS "complexityScore",
-  confidence::float8 AS confidence,
   impact_estimate AS "impactEstimate",
   evidence_refs AS "evidenceRefs",
   status
@@ -115,10 +136,9 @@ export const postgresAutomationOpportunityRepository: AutomationOpportunityRepos
       const result = await client.query<OpportunityRow>(
         `INSERT INTO automation_opportunities (
           tenant_id, department_id, process_id, title, problem_statement, proposed_outcome,
-          feasibility_score, impact_score, complexity_score, confidence, impact_estimate, evidence_refs, status
-        ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13
-        ) RETURNING ${selectColumns}`,
+          impact_estimate, evidence_refs, status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, 'discovered')
+        RETURNING ${selectColumns}`,
         [
           tenantId,
           input.departmentId ?? null,
@@ -126,20 +146,16 @@ export const postgresAutomationOpportunityRepository: AutomationOpportunityRepos
           input.title,
           input.problemStatement,
           input.proposedOutcome ?? null,
-          input.feasibilityScore ?? null,
-          input.impactScore ?? null,
-          input.complexityScore ?? null,
-          input.confidence ?? null,
           JSON.stringify(input.impactEstimate ?? {}),
-          JSON.stringify(input.evidenceRefs ?? []),
-          input.status ?? "discovered"
+          JSON.stringify(input.evidenceRefs ?? [])
         ]
       );
       const opportunity = result.rows[0]!;
       await writeAuditEvent(client, tenantId, actorId, "automation_opportunity.created", opportunity, {
         title: opportunity.title,
         departmentId: opportunity.departmentId,
-        processId: opportunity.processId
+        processId: opportunity.processId,
+        status: opportunity.status
       });
       await client.query("COMMIT");
       return opportunity;
@@ -155,6 +171,24 @@ export const postgresAutomationOpportunityRepository: AutomationOpportunityRepos
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      const currentResult = await client.query<{ status: string }>(
+        "SELECT status FROM automation_opportunities WHERE tenant_id = $1 AND id = $2 FOR UPDATE",
+        [tenantId, id]
+      );
+      const current = currentResult.rows[0];
+      if (!current) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+
+      if (
+        input.status !== undefined &&
+        (!opportunityStatuses.includes(current.status as OpportunityStatus) ||
+          !canTransitionOpportunityStatus(current.status as OpportunityStatus, input.status))
+      ) {
+        throw new OpportunityStatusTransitionError(current.status, input.status);
+      }
+
       const result = await client.query<OpportunityRow>(
         `UPDATE automation_opportunities SET
           department_id = CASE WHEN $3::boolean THEN $4::uuid ELSE department_id END,
@@ -162,13 +196,9 @@ export const postgresAutomationOpportunityRepository: AutomationOpportunityRepos
           title = COALESCE($7, title),
           problem_statement = COALESCE($8, problem_statement),
           proposed_outcome = CASE WHEN $9::boolean THEN $10::text ELSE proposed_outcome END,
-          feasibility_score = CASE WHEN $11::boolean THEN $12::numeric ELSE feasibility_score END,
-          impact_score = CASE WHEN $13::boolean THEN $14::numeric ELSE impact_score END,
-          complexity_score = CASE WHEN $15::boolean THEN $16::numeric ELSE complexity_score END,
-          confidence = CASE WHEN $17::boolean THEN $18::numeric ELSE confidence END,
-          impact_estimate = CASE WHEN $19::boolean THEN $20::jsonb ELSE impact_estimate END,
-          evidence_refs = CASE WHEN $21::boolean THEN $22::jsonb ELSE evidence_refs END,
-          status = COALESCE($23, status)
+          impact_estimate = CASE WHEN $11::boolean THEN $12::jsonb ELSE impact_estimate END,
+          evidence_refs = CASE WHEN $13::boolean THEN $14::jsonb ELSE evidence_refs END,
+          status = COALESCE($15, status)
          WHERE tenant_id = $1 AND id = $2
          RETURNING ${selectColumns}`,
         [
@@ -182,14 +212,6 @@ export const postgresAutomationOpportunityRepository: AutomationOpportunityRepos
           input.problemStatement ?? null,
           Object.prototype.hasOwnProperty.call(input, "proposedOutcome"),
           input.proposedOutcome ?? null,
-          Object.prototype.hasOwnProperty.call(input, "feasibilityScore"),
-          input.feasibilityScore ?? null,
-          Object.prototype.hasOwnProperty.call(input, "impactScore"),
-          input.impactScore ?? null,
-          Object.prototype.hasOwnProperty.call(input, "complexityScore"),
-          input.complexityScore ?? null,
-          Object.prototype.hasOwnProperty.call(input, "confidence"),
-          input.confidence ?? null,
           Object.prototype.hasOwnProperty.call(input, "impactEstimate"),
           input.impactEstimate === undefined ? null : JSON.stringify(input.impactEstimate),
           Object.prototype.hasOwnProperty.call(input, "evidenceRefs"),
@@ -203,7 +225,9 @@ export const postgresAutomationOpportunityRepository: AutomationOpportunityRepos
         return null;
       }
       await writeAuditEvent(client, tenantId, actorId, "automation_opportunity.updated", opportunity, {
-        changedFields: Object.keys(input)
+        changedFields: Object.keys(input),
+        previousStatus: current.status,
+        nextStatus: opportunity.status
       });
       await client.query("COMMIT");
       return opportunity;
@@ -216,20 +240,15 @@ export const postgresAutomationOpportunityRepository: AutomationOpportunityRepos
   }
 };
 
-const score = z.number().finite().min(0).max(100).nullable().optional();
+const stringArray = z.array(z.string().trim().min(1).max(512)).max(200);
 const createOpportunitySchema = z.object({
   departmentId: z.string().uuid().nullable().optional(),
   processId: z.string().uuid().nullable().optional(),
   title: z.string().trim().min(2).max(200),
   problemStatement: z.string().trim().min(5).max(4000),
   proposedOutcome: z.string().trim().max(2000).nullable().optional(),
-  feasibilityScore: score,
-  impactScore: score,
-  complexityScore: score,
-  confidence: z.number().finite().min(0).max(1).nullable().optional(),
   impactEstimate: z.record(z.string(), z.unknown()).optional(),
-  evidenceRefs: z.array(z.unknown()).max(200).optional(),
-  status: z.string().trim().min(1).max(40).optional()
+  evidenceRefs: stringArray.optional()
 }).strict();
 
 const updateOpportunitySchema = z.object({
@@ -238,13 +257,9 @@ const updateOpportunitySchema = z.object({
   title: z.string().trim().min(2).max(200).optional(),
   problemStatement: z.string().trim().min(5).max(4000).optional(),
   proposedOutcome: z.string().trim().max(2000).nullable().optional(),
-  feasibilityScore: score,
-  impactScore: score,
-  complexityScore: score,
-  confidence: z.number().finite().min(0).max(1).nullable().optional(),
   impactEstimate: z.record(z.string(), z.unknown()).optional(),
-  evidenceRefs: z.array(z.unknown()).max(200).optional(),
-  status: z.string().trim().min(1).max(40).optional()
+  evidenceRefs: stringArray.optional(),
+  status: z.enum(opportunityStatuses).optional()
 }).strict().refine((value) => Object.keys(value).length > 0, "At least one field must be provided");
 
 const idSchema = z.string().uuid();
@@ -261,14 +276,26 @@ function validationError(response: Response, message: string): void {
   response.status(400).json({ error: { code: "VALIDATION_ERROR", message } });
 }
 
-function handleAssociationError(error: unknown, response: Response): void {
+function handleOpportunityError(error: unknown, response: Response): boolean {
+  if (error instanceof OpportunityStatusTransitionError) {
+    response.status(409).json({
+      error: {
+        code: "INVALID_STATUS_TRANSITION",
+        message: error.message,
+        details: { from: error.from, to: error.to }
+      }
+    });
+    return true;
+  }
+
   if ((error as { code?: string }).code === "23503") {
     response.status(400).json({
       error: { code: "INVALID_ASSOCIATION", message: "The selected department or process is not available in this tenant" }
     });
-    return;
+    return true;
   }
-  response.status(500).json({ error: { code: "INTERNAL_ERROR", message: "The opportunity could not be saved" } });
+
+  return false;
 }
 
 export function createAutomationOpportunitiesRouter(repository: AutomationOpportunityRepository): ExpressRouter {
@@ -299,7 +326,7 @@ export function createAutomationOpportunitiesRouter(repository: AutomationOpport
       const opportunity = await repository.create(principal.tenantId, principal.subject, parsed.data);
       response.status(201).json({ data: opportunity });
     } catch (error) {
-      handleAssociationError(error, response);
+      if (!handleOpportunityError(error, response)) throw error;
     }
   });
 
@@ -315,7 +342,7 @@ export function createAutomationOpportunitiesRouter(repository: AutomationOpport
       if (!opportunity) return response.status(404).json({ error: { code: "NOT_FOUND", message: "Opportunity not found" } });
       response.json({ data: opportunity });
     } catch (error) {
-      handleAssociationError(error, response);
+      if (!handleOpportunityError(error, response)) throw error;
     }
   });
 

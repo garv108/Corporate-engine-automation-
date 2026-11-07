@@ -499,7 +499,11 @@ export class PostgresDiscoverySessionRepository implements DiscoverySessionRepos
         await client.query("ROLLBACK");
         return null;
       }
-      const current = toSession(selected.rows[0]) as DiscoverySession;
+      const current = await load(client, tenantId, sessionId);
+      if (!current) {
+        await client.query("ROLLBACK");
+        return null;
+      }
       if (current.status !== "confirmed") throw new DiscoverySessionConversionError(current.status);
 
       const existing = await client.query<{

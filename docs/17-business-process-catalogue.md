@@ -1,6 +1,6 @@
 # Business Process Catalogue — implementation boundary
 
-**Status:** Implemented API foundation; process modelling and process intelligence remain future work.
+**Status:** Implemented catalogue and M1-A versioned process-model API foundation; process discovery sessions and process intelligence remain future work.
 
 ## Purpose
 
@@ -10,7 +10,7 @@ A catalogue record is not, by itself, an executable workflow or a complete proce
 
 ## Current record
 
-The current API stores:
+The catalogue API stores:
 
 - process identity: immutable record ID and tenant ID;
 - descriptive metadata: name and optional description;
@@ -34,17 +34,22 @@ The API and database currently accept:
 
 This is the initial product vocabulary, not a claim that all tenants have identical legal or information-governance taxonomies. Tenant-specific classification policies and mapping are a future governance capability. Migration 004 intentionally refuses to silently rewrite non-standard existing values; operators must review and map them explicitly.
 
+## M1-A process-model layer
+
+The versioned process-model API is mounted beneath the catalogue resource at `/api/v1/business-processes/{processId}/models`. It supports draft creation, retrieval, whole-draft replacement, explicit fact review, confirmation and publication. Tenant identity is derived from the authenticated principal. The database enforces tenant/model-version relationships and blocks child inserts/updates after confirmation. A confirmed version can only be advanced to published; published model content cannot be updated.
+
+A model graph supports start/end/activity/decision/event/handoff/subprocess steps and directed conditional/exception/parallel transitions. Participants are generic descriptors (person, role, team, system, external party or unknown), not mandatory HR records. Facts preserve provenance kind and review state; new facts start as `unreviewed`. Confirming a model marks unreviewed user statements as user-confirmed but does not silently verify AI hypotheses or imported observations.
+
+The API has no model delete route. Data retention and erasure must be handled through a separately governed process. Publication is not workflow production approval.
+
 ## Explicitly outside this catalogue API
 
-The following are not implemented by the current API:
+The following remain outside the current API:
 
 - process owner and accountable role assignment;
-- process purpose, scope, trigger and expected outcome as separately governed fields;
-- process steps, transitions, gateways, rules and exception paths;
-- immutable process model versions;
 - process cases/instances and event ingestion;
 - cycle-time, waiting-time, throughput, rework or conformance analytics;
-- executable workflow definitions, approvals or n8n dispatch.
+- executable workflow definitions, production approvals or n8n dispatch.
 
 These capabilities must not be inferred from the current `systems`, `inputs` or `outputs` arrays.
 

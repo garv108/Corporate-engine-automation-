@@ -118,6 +118,32 @@ describe("Process Discovery Sessions PostgreSQL persistence and lifecycle", () =
     expect(confirmed?.status).toBe("confirmed");
   });
 
+  it("does not allow superseded fact history to be edited or restored", async () => {
+    const session = await postgresDiscoverySessionRepository.create(tenantA, actorId, {
+      initialDescription: description,
+      factUpdates: [{ fieldPath: "purpose", value: "Original purpose" }]
+    });
+    const firstFact = session.factEvents.find((fact) => fact.fieldPath === "purpose")!;
+    expect(firstFact.isCurrent).toBe(true);
+
+    const updated = await postgresDiscoverySessionRepository.turn(tenantA, session.id, actorId, {
+      message: "Correction: this process resolves internal requests.",
+      factUpdates: [{ fieldPath: "purpose", value: "Resolve internal requests" }],
+      expectedRevision: session.revision
+    });
+    const superseded = updated!.factEvents.find((fact) => fact.id === firstFact.id)!;
+    expect(superseded.isCurrent).toBe(false);
+
+    await expect(pool.query(
+      "UPDATE process_discovery_session_fact_events SET value=$3::jsonb WHERE tenant_id=$1 AND id=$2",
+      [tenantA, firstFact.id, JSON.stringify("tampered")]
+    )).rejects.toMatchObject({ code: "55000" });
+    await expect(pool.query(
+      "UPDATE process_discovery_session_fact_events SET is_current=true WHERE tenant_id=$1 AND id=$2",
+      [tenantA, firstFact.id]
+    )).rejects.toMatchObject({ code: "55000" });
+  });
+
   it("blocks confirmation while required information is missing", async () => {
     const session = await postgresDiscoverySessionRepository.create(tenantA, actorId, {
       initialDescription: description, factUpdates: []

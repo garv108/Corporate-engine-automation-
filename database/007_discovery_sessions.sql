@@ -130,13 +130,35 @@ BEGIN
     IS DISTINCT FROM
     ROW(OLD.id,OLD.tenant_id,OLD.session_id,OLD.source_turn_id,OLD.field_path,OLD.value,
         OLD.provenance_kind,OLD.recorded_by,OLD.recorded_at) THEN
-  RAISE EXCEPTION 'Discovery fact history is immutable' USING ERRCODE='55000';
+  RAISE EXCEPTION 'Discovery fact content and provenance are immutable' USING ERRCODE='55000';
  END IF;
+
  SELECT status INTO current_status FROM process_discovery_sessions
  WHERE tenant_id=NEW.tenant_id AND id=NEW.session_id FOR KEY SHARE;
  IF current_status NOT IN ('active','ready_for_review') THEN
   RAISE EXCEPTION 'Confirmed discovery fact history is immutable' USING ERRCODE='55000';
  END IF;
+
+ IF OLD.is_current = false THEN
+  RAISE EXCEPTION 'Superseded discovery facts cannot be changed or restored' USING ERRCODE='55000';
+ END IF;
+
+ IF NEW.is_current = false THEN
+  IF ROW(NEW.review_state,NEW.reviewed_by,NEW.reviewed_at)
+     IS DISTINCT FROM
+     ROW(OLD.review_state,OLD.reviewed_by,OLD.reviewed_at) THEN
+   RAISE EXCEPTION 'A fact cannot be reviewed and superseded in the same update' USING ERRCODE='55000';
+  END IF;
+  RETURN NEW;
+ END IF;
+
+ IF OLD.review_state <> 'unreviewed'
+    OR NEW.review_state = 'unreviewed'
+    OR NEW.reviewed_by IS NULL
+    OR NEW.reviewed_at IS NULL THEN
+  RAISE EXCEPTION 'A current discovery fact may only receive one explicit review decision' USING ERRCODE='55000';
+ END IF;
+
  RETURN NEW;
 END;
 $$;

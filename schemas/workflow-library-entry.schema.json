@@ -160,7 +160,7 @@
         },
         "testedVersions": {
           "type": "array",
-          "minItems": 1,
+          "minItems": 0,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -190,7 +190,38 @@
             }
           }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "compatibilityStatus": {
+                "const": "compatible"
+              }
+            },
+            "required": [
+              "compatibilityStatus"
+            ]
+          },
+          "then": {
+            "properties": {
+              "testedVersions": {
+                "minItems": 1,
+                "contains": {
+                  "properties": {
+                    "result": {
+                      "const": "passed"
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "artifact": {
       "type": "object",
@@ -569,8 +600,7 @@
       "required": [
         "status",
         "artifactSha256",
-        "checks",
-        "validatedAt"
+        "checks"
       ],
       "properties": {
         "status": {
@@ -640,7 +670,33 @@
           "type": "string",
           "maxLength": 160
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "not_tested"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "validatedAt"
+              ]
+            }
+          },
+          "else": {
+            "required": [
+              "validatedAt"
+            ]
+          }
+        }
+      ]
     },
     "createdAt": {
       "type": "string",

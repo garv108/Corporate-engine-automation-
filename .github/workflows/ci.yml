@@ -55,5 +55,7 @@ jobs:
         run: pnpm typecheck
       - name: Test
         run: pnpm test
+        env:
+          DATABASE_URL: postgresql://cias:cias_dev_password@localhost:5432/cias
       - name: Build
         run: pnpm build

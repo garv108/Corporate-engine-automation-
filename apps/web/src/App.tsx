@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { navigation } from "./navigation";
+import GuidedDiscovery from "./GuidedDiscovery";
 
 type ApiStatus = "checking" | "online" | "offline";
 
 function App() {
   const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
+  const [activePage, setActivePage] = useState<(typeof navigation)[number]>("Overview");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -33,12 +35,23 @@ function App() {
         </div>
         <div className="workspace-label">WORKSPACE</div>
         <nav aria-label="Main navigation">
-          {navigation.map((item, index) => (
-            <button className={index === 0 ? "nav-item active" : "nav-item"} key={item}>
-              <span className="nav-dot" />
-              {item}
-            </button>
-          ))}
+          {navigation.map((item) => {
+            const available = item === "Overview" || item === "Work Discovery";
+            return (
+              <button
+                className={activePage === item ? "nav-item active" : "nav-item"}
+                key={item}
+                type="button"
+                disabled={!available}
+                title={available ? item : "Available in a later milestone"}
+                aria-current={activePage === item ? "page" : undefined}
+                onClick={() => { if (available) setActivePage(item); }}
+              >
+                <span className="nav-dot" />
+                {item}
+              </button>
+            );
+          })}
         </nav>
         <div className="sidebar-footer">
           <span className="status-indicator" />
@@ -48,7 +61,7 @@ function App() {
 
       <main className="main">
         <header className="topbar">
-          <div className="breadcrumb">Workspace <span>/</span> Overview</div>
+          <div className="breadcrumb">Workspace <span>/</span> {activePage}</div>
           <div className="topbar-right">
             <span className={apiStatus === "online" ? "api-status online" : "api-status"}>
               <span /> API {apiStatus}
@@ -57,7 +70,7 @@ function App() {
           </div>
         </header>
 
-        <section className="content">
+        {activePage === "Work Discovery" ? <GuidedDiscovery /> : <section className="content">
           <div className="page-heading">
             <div>
               <p className="eyebrow">CORPORATE INTELLIGENCE & AUTOMATION</p>
@@ -129,7 +142,7 @@ function App() {
               </div>
             ))}
           </div>
-        </section>
+        </section> }
       </main>
     </div>
   );

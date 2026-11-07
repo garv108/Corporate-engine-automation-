@@ -166,12 +166,12 @@ async function assertOpportunity(client: PoolClient, tenantId: string, opportuni
 
 export interface OpportunityIntelligenceRepository {
   listEvidence(tenantId: string, opportunityId: string): Promise<OpportunityEvidence[] | null>;
-  createEvidence(tenantId: string, opportunityId: string, actorId: string, input: z.infer<typeof evidenceInputSchema>): Promise<OpportunityEvidence>;
+  createEvidence(tenantId: string, opportunityId: string, actorId: string, input: z.input<typeof evidenceInputSchema>): Promise<OpportunityEvidence>;
   listInterventions(tenantId: string, opportunityId: string): Promise<OpportunityIntervention[] | null>;
-  createIntervention(tenantId: string, opportunityId: string, actorId: string, input: z.infer<typeof interventionInputSchema>): Promise<OpportunityIntervention>;
+  createIntervention(tenantId: string, opportunityId: string, actorId: string, input: z.input<typeof interventionInputSchema>): Promise<OpportunityIntervention>;
   updateIntervention(tenantId: string, opportunityId: string, interventionId: string, actorId: string, status: InterventionStatus): Promise<OpportunityIntervention | null>;
   listAssessments(tenantId: string, opportunityId: string, interventionId: string): Promise<OpportunityAssessment[] | null>;
-  createAssessment(tenantId: string, opportunityId: string, interventionId: string, actorId: string, input: z.infer<typeof assessmentInputSchema>): Promise<OpportunityAssessment | null>;
+  createAssessment(tenantId: string, opportunityId: string, interventionId: string, actorId: string, input: z.input<typeof assessmentInputSchema>): Promise<OpportunityAssessment | null>;
 }
 
 export const postgresOpportunityIntelligenceRepository: OpportunityIntelligenceRepository = {
@@ -196,7 +196,7 @@ export const postgresOpportunityIntelligenceRepository: OpportunityIntelligenceR
         "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) " +
         "RETURNING id,tenant_id AS \"tenantId\",opportunity_id AS \"opportunityId\",source_kind AS \"sourceKind\",claim,source_label AS \"sourceLabel\",source_reference AS \"sourceReference\",source_version AS \"sourceVersion\",content_hash AS \"contentHash\",classification,observed_at AS \"observedAt\",retrieved_at AS \"retrievedAt\",recorded_by AS \"recordedBy\",recorded_at AS \"recordedAt\"",
         [tenantId, opportunityId, input.sourceKind, input.claim, input.sourceLabel, input.sourceReference ?? null,
-          input.sourceVersion ?? null, input.contentHash?.toLowerCase() ?? null, input.classification,
+          input.sourceVersion ?? null, input.contentHash?.toLowerCase() ?? null, input.classification ?? "unknown",
           input.observedAt ?? null, input.retrievedAt ?? null, actorId]
       );
       const evidence = result.rows[0]!;
@@ -230,8 +230,8 @@ export const postgresOpportunityIntelligenceRepository: OpportunityIntelligenceR
         "INSERT INTO opportunity_interventions (tenant_id,opportunity_id,intervention_type,title,description,assumptions,dependencies,limitations,human_checkpoints,created_by,updated_by) " +
         "VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb,$10,$10) " +
         "RETURNING id,tenant_id AS \"tenantId\",opportunity_id AS \"opportunityId\",intervention_type AS \"interventionType\",title,description,assumptions,dependencies,limitations,human_checkpoints AS \"humanCheckpoints\",status,created_by AS \"createdBy\",updated_by AS \"updatedBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",NULL::int AS \"latestAssessmentVersion\",NULL::numeric AS \"latestScore\"",
-        [tenantId, opportunityId, input.interventionType, input.title, input.description, JSON.stringify(input.assumptions),
-          JSON.stringify(input.dependencies), JSON.stringify(input.limitations), JSON.stringify(input.humanCheckpoints), actorId]
+        [tenantId, opportunityId, input.interventionType, input.title, input.description, JSON.stringify(input.assumptions ?? []),
+          JSON.stringify(input.dependencies ?? []), JSON.stringify(input.limitations ?? []), JSON.stringify(input.humanCheckpoints ?? []), actorId]
       );
       const intervention = result.rows[0]!;
       await audit(client, tenantId, actorId, "opportunity_intervention.created", "opportunity_intervention", intervention.id, {
@@ -312,7 +312,7 @@ export const postgresOpportunityIntelligenceRepository: OpportunityIntelligenceR
         "INSERT INTO opportunity_intervention_assessments (tenant_id,opportunity_id,intervention_id,version,scoring_method_version,dimension_scores,overall_score,rationale,assumptions,expected_impact,evaluated_by) " +
         "VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9::jsonb,$10::jsonb,$11) RETURNING id,evaluated_at AS \"evaluatedAt\"",
         [tenantId, opportunityId, interventionId, version, scoringMethodVersion, JSON.stringify(input.dimensionScores),
-          overallScore, input.rationale, JSON.stringify(input.assumptions), JSON.stringify(input.expectedImpact), actorId]
+          overallScore, input.rationale, JSON.stringify(input.assumptions ?? []), JSON.stringify(input.expectedImpact ?? {}), actorId]
       );
       for (const evidenceId of input.evidenceIds) {
         await client.query(
@@ -327,7 +327,7 @@ export const postgresOpportunityIntelligenceRepository: OpportunityIntelligenceR
       return {
         id: inserted.rows[0]!.id, tenantId, opportunityId, interventionId, version,
         scoringMethodVersion, dimensionScores: input.dimensionScores, overallScore,
-        rationale: input.rationale, assumptions: input.assumptions, expectedImpact: input.expectedImpact,
+        rationale: input.rationale, assumptions: input.assumptions ?? [], expectedImpact: input.expectedImpact ?? {},
         evidenceIds: input.evidenceIds, evaluatedBy: actorId, evaluatedAt: inserted.rows[0]!.evaluatedAt
       };
     } catch (error) {

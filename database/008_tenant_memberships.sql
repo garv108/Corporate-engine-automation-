@@ -9,7 +9,7 @@ RETURNS BOOLEAN
 LANGUAGE SQL
 IMMUTABLE
 PARALLEL SAFE
-AS $
+AS $membership$
   SELECT candidate IS NOT NULL
     AND cardinality(candidate) <= max_items
     AND NOT EXISTS (
@@ -20,7 +20,7 @@ AS $
          OR length(value) > max_item_length
          OR btrim(value) = ''
     );
-$;
+$membership$;
 
 CREATE TABLE tenant_memberships (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

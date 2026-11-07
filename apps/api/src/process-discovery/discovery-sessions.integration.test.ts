@@ -76,7 +76,7 @@ describe("Process Discovery Sessions PostgreSQL persistence and lifecycle", () =
     const [steps, transitions, evidence, facts] = await Promise.all([
       pool.query("SELECT step_key,kind,name FROM business_process_model_steps WHERE tenant_id=$1 AND model_version_id=$2 ORDER BY step_key", [tenantA, conversion!.modelVersionId]),
       pool.query("SELECT count(*)::int AS count FROM business_process_model_transitions WHERE tenant_id=$1 AND model_version_id=$2", [tenantA, conversion!.modelVersionId]),
-      pool.query("SELECT source_kind,source_label,source_reference FROM business_process_model_evidence WHERE tenant_id=$1 AND model_version_id=$2", [tenantA, conversion!.modelVersionId]),
+      pool.query("SELECT id,source_kind,source_label,source_reference FROM business_process_model_evidence WHERE tenant_id=$1 AND model_version_id=$2", [tenantA, conversion!.modelVersionId]),
       pool.query("SELECT field_path,provenance_kind,evidence_id FROM business_process_model_facts WHERE tenant_id=$1 AND model_version_id=$2", [tenantA, conversion!.modelVersionId])
     ]);
     expect(steps.rows).toHaveLength(3);

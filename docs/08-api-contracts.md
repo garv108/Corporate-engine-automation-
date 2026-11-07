@@ -14,6 +14,7 @@ The API keeps database access, authentication, tenant resolution, authorization,
 | Departments | `GET/POST /departments`, `GET/PATCH /departments/{id}` | Implemented |
 | Business processes | `GET/POST /business-processes`, `GET/PATCH /business-processes/{id}` | Implemented |
 | Process models | `GET/POST /business-processes/{processId}/models`, `GET/PUT /business-processes/{processId}/models/{modelVersionId}`, `POST .../{modelVersionId}/confirm`, `POST .../{modelVersionId}/publish`, `POST .../{modelVersionId}/facts/{factId}/review` | Implemented as the M1-A versioned process-map foundation |
+| Process discovery sessions | `GET/POST /process-discovery/sessions`, `GET /process-discovery/sessions/{sessionId}`, `POST .../{sessionId}/turns`, `POST .../{sessionId}/confirm` | Implemented as the M1-B persistence and deterministic completeness foundation |
 | Automation opportunities | `GET/POST /opportunities`, `GET/PATCH /opportunities/{id}` | Implemented as a basic persistence/API slice; not a complete discovery or workflow-library feature |
 
 ### Collection pagination
@@ -55,16 +56,23 @@ An opportunity can have several intervention candidates, including automation, p
 
 The following are design targets for the Work Mapping and Guided Discovery milestone and later phases, not claims about current route availability.
 
-### Guided discovery — planned M1-B
+### Guided discovery — M1-B persistence and completeness foundation
 
-- `POST /process-discovery/sessions` — create a discovery session from an initial description.
-- `GET /process-discovery/sessions/{id}` — retrieve its state and current draft.
-- `POST /process-discovery/sessions/{id}/turns` — submit an answer and receive the next focused question or completion explanation.
-- `POST /process-discovery/sessions/{id}/confirm` — confirm the user-reviewed map.
+Implemented routes:
 
-The M1-A model routes are implemented under the existing Business Process Catalogue. They create and retrieve structured model versions, preserve branching steps/transitions, evidence references and field-level provenance. Draft models can be edited; confirmed versions are immutable; publishing is a separate permissioned action. Fact review is explicit, and verification requires a separate permission. None of these actions authorizes workflow execution.
+- `GET /process-discovery/sessions` — list sessions using tenant-scoped keyset pagination.
+- `POST /process-discovery/sessions` — create a session from an initial natural-language description; optional initial structured fact updates are accepted. Classification is system-set to unknown in this slice; the client cannot downgrade it. Downstream policy must handle unknown as restricted until an authorized classification process is implemented.
+- `GET /process-discovery/sessions/{sessionId}` — resume a session with its turns, current draft, fact-event history, completeness result and next question.
+- `POST /process-discovery/sessions/{sessionId}/turns` — append a user message and structured fact updates; supply the current revision and, when answering a specific prompt, its question ID.
+- `POST /process-discovery/sessions/{sessionId}/confirm` — confirm a ready-for-review discovery snapshot using its current revision and explicitly acknowledge unresolved uncertainties when present.
 
-A future discovery session must preserve conversation state, current structured facts, fact provenance, uncertainty, unresolved questions, schema version and user edits. A completeness gate must explain which required facts remain unknown. An AI statement must not be treated as an observed fact without user/system confirmation.
+The deterministic minimum completeness gate requires purpose, trigger, expected outcome and at least one valid process step. It reports optional recommended areas separately, including scope, systems/tools, inputs/outputs, decisions, exceptions, human judgement, volume, timing, baseline, data handling and constraints. The draft also preserves explicit unresolved uncertainty records, including the field affected and why the uncertainty matters. A missing optional detail is not automatically treated as a blocker or as proof that the process has no such detail.
+
+Each structured answer is stored as a user turn and an append-only fact event with field path, value, source turn, provenance and review state. The session carries a system-set data classification (unknown by default); users cannot self-label it as public. Classification-aware access policy and retention controls remain prerequisites before sensitive workforce data is used. Corrections create a new fact event and supersede the previous current fact without deleting history. Revision checks reject stale submissions from concurrent sessions/tabs. Confirmation is blocked until the minimum gate is satisfied and freezes the snapshot. When unresolved uncertainty records exist, the caller must explicitly set acknowledgeUnresolved=true; the acknowledgement is recorded in the audit metadata.
+
+**Current limitation:** this implementation does not call an LLM or extract facts from free text. The original description and user messages are retained verbatim; the caller must map structured answers to explicit field paths. This is intentional until a provider-neutral interview adapter is added and evaluated. No AI hypothesis is silently recorded as a confirmed fact. Confirmation does not publish an official process model or authorize automation.
+
+The M1-A model routes remain separate: they store versioned process definitions under the Business Process Catalogue. Discovery-session confirmation is a reviewed snapshot, not a workflow approval or production authorization.
 
 ### Opportunity assessment
 

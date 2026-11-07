@@ -1,4 +1,8 @@
 -- M1-C: source-linked opportunity evidence, intervention candidates and immutable assessments.
+-- The base table has a globally unique ID but needs this composite key for tenant-preserving FKs.
+CREATE UNIQUE INDEX IF NOT EXISTS automation_opportunities_tenant_id_id_unique_idx
+  ON automation_opportunities (tenant_id, id);
+
 CREATE TABLE opportunity_evidence (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL,

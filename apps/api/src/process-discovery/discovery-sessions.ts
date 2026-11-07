@@ -4,7 +4,7 @@ import { z } from "zod";
 import { pool } from "../db/pool.js";
 import { requirePermission } from "../auth/auth.js";
 import { encodePaginationCursor, parsePaginationQuery, type Page, type PaginationOptions } from "../pagination/cursor-pagination.js";
-import { processModelInputSchema, type ProcessModelInput } from "../process-models/process-models.js";
+import { createProcessModelInTransaction, processModelInputSchema, type ProcessModelInput } from "../process-models/process-models.js";
 
 const questions = [
   { id: "purpose", fieldPath: "purpose", prompt: "What is the main purpose of this process? What need does it fulfil?", rationale: "The purpose defines why this process exists." },
@@ -66,7 +66,25 @@ export type DiscoverySessionRepository = {
     message: string; factUpdates: DiscoveryFactUpdate[]; expectedRevision: number; answerToQuestionId?: string | undefined
   }): Promise<DiscoverySession | null>;
   confirm(tenantId: string, sessionId: string, actorId: string, expectedRevision: number, acknowledgeUnresolved?: boolean): Promise<DiscoverySession | null>;
+  convertToProcess(tenantId: string, sessionId: string, actorId: string, input: { name: string; description?: string | null | undefined }): Promise<DiscoveryConversionResult | null>;
 };
+
+export type DiscoveryConversionResult = {
+  sessionId: string;
+  processId: string;
+  processName: string;
+  modelVersionId: string;
+  modelVersion: number;
+  modelStatus: "draft";
+  createdAt: string;
+  alreadyConverted: boolean;
+};
+
+export class DiscoverySessionConversionError extends Error {
+  constructor(readonly state: string) {
+    super("Only a confirmed discovery snapshot can be converted into a process catalogue record.");
+  }
+}
 
 export class DiscoverySessionStateError extends Error {
   constructor(state: string, action: string) { super("Cannot " + action + " a discovery session while it is " + state); }
@@ -463,6 +481,124 @@ export class PostgresDiscoverySessionRepository implements DiscoverySessionRepos
       client.release();
     }
   }
+
+  async convertToProcess(
+    tenantId: string,
+    sessionId: string,
+    actorId: string,
+    input: { name: string; description?: string | null | undefined }
+  ): Promise<DiscoveryConversionResult | null> {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const selected = await client.query(
+        "SELECT " + columns + " FROM process_discovery_sessions WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
+        [tenantId, sessionId]
+      );
+      if (!selected.rowCount) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      const current = await load(client, tenantId, sessionId);
+      if (!current) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      if (current.status !== "confirmed") throw new DiscoverySessionConversionError(current.status);
+
+      const existing = await client.query<{
+        processId: string; processName: string; modelVersionId: string; modelVersion: number; createdAt: string;
+      }>(
+        "SELECT c.process_id AS \"processId\", p.name AS \"processName\", " +
+        "c.model_version_id AS \"modelVersionId\", m.version AS \"modelVersion\", c.created_at AS \"createdAt\" " +
+        "FROM process_discovery_conversions c " +
+        "JOIN business_processes p ON p.tenant_id=c.tenant_id AND p.id=c.process_id " +
+        "JOIN business_process_model_versions m ON m.tenant_id=c.tenant_id AND m.process_id=c.process_id AND m.id=c.model_version_id " +
+        "WHERE c.tenant_id=$1 AND c.session_id=$2",
+        [tenantId, sessionId]
+      );
+      if (existing.rowCount) {
+        const row = existing.rows[0]!;
+        await client.query("COMMIT");
+        return {
+          sessionId, processId: row.processId, processName: row.processName,
+          modelVersionId: row.modelVersionId, modelVersion: row.modelVersion,
+          modelStatus: "draft", createdAt: row.createdAt, alreadyConverted: true
+        };
+      }
+
+      const draft = current.currentDraft;
+      const processResult = await client.query<{ id: string }>(
+        "INSERT INTO business_processes " +
+        "(tenant_id,department_id,name,description,systems,inputs,outputs,sensitivity) " +
+        "VALUES ($1,NULL,$2,$3,$4::jsonb,$5::jsonb,$6::jsonb,$7) RETURNING id",
+        [
+          tenantId, input.name, input.description ?? draft.purpose,
+          JSON.stringify(draft.context.systems), JSON.stringify(draft.context.inputs),
+          JSON.stringify(draft.context.outputs), current.classification
+        ]
+      );
+      const processId = processResult.rows[0]!.id;
+      await client.query(
+        "INSERT INTO audit_events (tenant_id,actor_type,actor_id,action,resource_type,resource_id,decision,metadata) " +
+        "VALUES ($1,'user',$2,'business_process.created','business_process',$3,'allowed',$4::jsonb)",
+        [tenantId, actorId, processId, JSON.stringify({
+          name: input.name, source: "confirmed_discovery_conversion", discoverySessionId: sessionId
+        })]
+      );
+
+      const currentFacts = current.factEvents.filter((fact: any) => fact.isCurrent);
+      const modelInput = processModelInputSchema.parse({
+        purpose: draft.purpose ?? undefined,
+        scope: draft.scope ?? undefined,
+        trigger: draft.trigger ?? undefined,
+        expectedOutcome: draft.expectedOutcome ?? undefined,
+        steps: draft.steps,
+        transitions: draft.transitions,
+        evidence: [{
+          key: "discovery_session",
+          sourceKind: "user_input",
+          sourceLabel: "Confirmed discovery session",
+          sourceReference: "cias://process-discovery/sessions/" + sessionId,
+          sourceVersion: "revision-" + current.revision,
+          classification: current.classification,
+          ...(current.confirmedAt ? { retrievedAt: new Date(current.confirmedAt).toISOString() } : {})
+        }],
+        facts: currentFacts.map((fact: any) => ({
+          fieldPath: fact.fieldPath,
+          value: fact.value,
+          provenanceKind: fact.provenanceKind,
+          evidenceKey: "discovery_session"
+        }))
+      });
+      const model = await createProcessModelInTransaction(client, tenantId, processId, actorId, modelInput);
+      const conversion = await client.query(
+        "INSERT INTO process_discovery_conversions (tenant_id,session_id,process_id,model_version_id,created_by) " +
+        "VALUES ($1,$2,$3,$4,$5) RETURNING created_at AS \"createdAt\"",
+        [tenantId, sessionId, processId, model.id, actorId]
+      );
+      await client.query(
+        "INSERT INTO audit_events (tenant_id,actor_type,actor_id,action,resource_type,resource_id,decision,metadata) " +
+        "VALUES ($1,'user',$2,'process_discovery_session.converted','process_discovery_session',$3,'allowed',$4::jsonb)",
+        [tenantId, actorId, sessionId, JSON.stringify({
+          processId, modelVersionId: model.id, modelVersion: model.version,
+          modelStatus: model.status, sourceRevision: current.revision
+        })]
+      );
+      await client.query("COMMIT");
+      return {
+        sessionId, processId, processName: input.name,
+        modelVersionId: model.id, modelVersion: model.version,
+        modelStatus: "draft", createdAt: conversion.rows[0]!.createdAt, alreadyConverted: false
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
 }
 
 export const postgresDiscoverySessionRepository = new PostgresDiscoverySessionRepository();
@@ -491,6 +627,10 @@ const turnSchema = z.object({
   answerToQuestionId: z.string().trim().min(1).max(64).optional()
 }).strict();
 const confirmSchema = z.object({ expectedRevision: z.number().int().nonnegative(), acknowledgeUnresolved: z.boolean().default(false) }).strict();
+const convertSchema = z.object({
+  name: z.string().trim().min(2).max(160),
+  description: z.string().trim().max(2000).nullable().optional()
+}).strict();
 const uuidSchema = z.string().uuid();
 
 function invalid(response: Response, message: string): void {
@@ -498,6 +638,10 @@ function invalid(response: Response, message: string): void {
 }
 
 function handleError(error: unknown, response: Response): boolean {
+  if (error instanceof DiscoverySessionConversionError) {
+    response.status(409).json({ error: { code: "DISCOVERY_NOT_CONFIRMED", message: error.message, status: error.state } });
+    return true;
+  }
   if (error instanceof DiscoverySessionRevisionError) {
     response.status(409).json({ error: { code: "REVISION_CONFLICT", message: error.message, currentRevision: error.currentRevision } });
     return true;
@@ -599,6 +743,31 @@ export function createDiscoverySessionsRouter(repository: DiscoverySessionReposi
       if (!handleError(error, response)) throw error;
     }
   });
+
+  router.post(
+    "/:sessionId/convert",
+    requirePermission("process_discovery_sessions:convert"),
+    requirePermission("business_processes:create"),
+    requirePermission("business_process_models:create"),
+    async (request, response) => {
+      const id = uuidSchema.safeParse(request.params.sessionId);
+      const parsed = convertSchema.safeParse(request.body);
+      if (!id.success) return invalid(response, "Discovery session ID must be a UUID");
+      if (!parsed.success) return invalid(response, parsed.error.issues[0]?.message ?? "Invalid conversion payload");
+      try {
+        const conversion = await repository.convertToProcess(
+          request.principal!.tenantId,
+          id.data,
+          request.principal!.subject,
+          parsed.data
+        );
+        if (!conversion) return response.status(404).json({ error: { code: "NOT_FOUND", message: "Discovery session not found" } });
+        response.status(conversion.alreadyConverted ? 200 : 201).json({ data: conversion });
+      } catch (error) {
+        if (!handleError(error, response)) throw error;
+      }
+    }
+  );
 
   return router;
 }

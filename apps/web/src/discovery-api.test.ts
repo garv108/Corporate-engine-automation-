@@ -58,6 +58,26 @@ describe("discovery API client", () => {
     });
   });
 
+  it("converts a confirmed discovery session using the explicit catalogue name", async () => {
+    const result = {
+      sessionId: "session-1",
+      processId: "process-1",
+      processName: "Service request handling",
+      modelVersionId: "model-1",
+      modelVersion: 1,
+      modelStatus: "draft" as const,
+      createdAt: "2026-11-07T00:00:00.000Z",
+      alreadyConverted: false
+    };
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response(201, { data: result }));
+    const api = createDiscoveryApi(fetcher);
+    await expect(api.convert("session-1", { name: "Service request handling" })).resolves.toEqual(result);
+    const [url, init] = fetcher.mock.calls[0]!;
+    expect(url).toBe("/api/v1/process-discovery/sessions/session-1/convert");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({ name: "Service request handling" });
+  });
+
   it("surfaces network failures without leaking implementation details", async () => {
     const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new Error("socket detail"));
     const api = createDiscoveryApi(fetcher);

@@ -139,6 +139,17 @@ export class DiscoveryApiError extends Error {
 }
 
 export type DiscoveryApi = ReturnType<typeof createDiscoveryApi>;
+export type DiscoveryConversionResult = {
+  sessionId: string;
+  processId: string;
+  processName: string;
+  modelVersionId: string;
+  modelVersion: number;
+  modelStatus: "draft";
+  createdAt: string;
+  alreadyConverted: boolean;
+};
+
 export type AccessTokenProvider = () => Promise<string | null>;
 
 export function createDiscoveryApi(
@@ -216,6 +227,16 @@ export function createDiscoveryApi(
       input: { expectedRevision: number; acknowledgeUnresolved: boolean }
     ): Promise<DiscoverySession> {
       const response = await request<{ data: DiscoverySession }>("/" + encodeURIComponent(sessionId) + "/confirm", {
+        method: "POST",
+        body: JSON.stringify(input)
+      });
+      return response.data;
+    },
+    async convert(
+      sessionId: string,
+      input: { name: string; description?: string | null }
+    ): Promise<DiscoveryConversionResult> {
+      const response = await request<{ data: DiscoveryConversionResult }>("/" + encodeURIComponent(sessionId) + "/convert", {
         method: "POST",
         body: JSON.stringify(input)
       });

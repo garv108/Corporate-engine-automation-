@@ -46,7 +46,7 @@ Opportunity status represents the business decision lifecycle only:
 
 `deferred` and `rejected` are explicit alternative outcomes. Transitions are validated server-side and invalid transitions return HTTP 409. Workflow proposal, workflow version, verification, production approval and execution have separate lifecycles.
 
-Opportunity creation always begins in `discovered`. The API does not accept unexplained caller-supplied feasibility, impact, complexity or confidence scores as verified assessments. A future assessment record must include its scoring-method version, dimensions, evidence, assumptions, evaluator and timestamp. Evidence references are currently bounded strings; they are not yet normalized evidence relationships with referential integrity.
+Opportunity creation always begins in `discovered`. Moving to `approved_for_design` requires the separate `opportunities:approve` permission in addition to the general update permission. The current slice records this decision in the audit trail; a richer approval case with named approver, rationale and evidence will be added when the governance module is implemented. The API does not accept unexplained caller-supplied feasibility, impact, complexity or confidence scores as verified assessments. A future assessment record must include its scoring-method version, dimensions, evidence, assumptions, evaluator and timestamp. Evidence references are currently bounded strings; they are not yet normalized evidence relationships with referential integrity.
 
 An opportunity can have several intervention candidates, including automation, process redesign, policy/approval simplification, training, capacity changes and data-quality remediation. It is not itself a workflow or permission to execute one.
 

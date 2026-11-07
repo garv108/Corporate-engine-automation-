@@ -1,5 +1,6 @@
 export const navigation = [
   "Overview",
+  "Work Discovery",
   "Departments",
   "Research Hub",
   "Opportunities",

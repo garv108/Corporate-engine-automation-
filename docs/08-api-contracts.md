@@ -10,22 +10,49 @@ The API keeps database access, authentication, tenant resolution, authorization,
 
 | Resource | Routes | Status |
 |---|---|---|
-| Health | `GET /health` | Implemented |
+| Health | `GET /api/v1/health` | Implemented |
 | Departments | `GET/POST /departments`, `GET/PATCH /departments/{id}` | Implemented |
 | Business processes | `GET/POST /business-processes`, `GET/PATCH /business-processes/{id}` | Implemented |
 | Automation opportunities | `GET/POST /opportunities`, `GET/PATCH /opportunities/{id}` | Implemented as a basic persistence/API slice; not a complete discovery or workflow-library feature |
+
+### Collection pagination
+
+The Departments, Business Processes and Automation Opportunities list endpoints use keyset pagination:
+
+- `?limit=50&cursor={opaqueCursor}`
+- Default page size: 50; maximum page size: 100.
+- Departments and Business Processes are ordered by `name ASC, id ASC`.
+- Automation Opportunities are ordered by `title ASC, id ASC`.
+
+A successful collection response preserves the `data` array and adds:
+
+```json
+{
+  "data": [],
+  "pagination": {
+    "limit": 50,
+    "nextCursor": null
+  }
+}
+```
+
+Pass `nextCursor` unchanged as the next request's `cursor` query parameter. Cursors are opaque continuation positions, not authorization tokens. Tenant scope is re-derived from the verified principal on every request. Invalid page sizes or cursors return HTTP 400.
+
+## Automation Opportunity contract
 
 Opportunity status represents the business decision lifecycle only:
 
 `discovered → qualified → alternatives_compared → business_case_drafted → approval_pending → approved_for_design`
 
-`deferred` and `rejected` are explicit alternative outcomes. Workflow proposal, workflow version, verification, production approval and execution have separate lifecycles.
+`deferred` and `rejected` are explicit alternative outcomes. Transitions are validated server-side and invalid transitions return HTTP 409. Workflow proposal, workflow version, verification, production approval and execution have separate lifecycles.
 
-The opportunity API must not accept unexplained client-generated scores as verified assessments. A future assessment record must include its scoring-method version, dimensions, evidence, assumptions, evaluator and timestamp. Evidence references are currently typed as strings but are not yet a normalized evidence relationship with referential integrity.
+Opportunity creation always begins in `discovered`. The API does not accept unexplained caller-supplied feasibility, impact, complexity or confidence scores as verified assessments. A future assessment record must include its scoring-method version, dimensions, evidence, assumptions, evaluator and timestamp. Evidence references are currently bounded strings; they are not yet normalized evidence relationships with referential integrity.
+
+An opportunity can have several intervention candidates, including automation, process redesign, policy/approval simplification, training, capacity changes and data-quality remediation. It is not itself a workflow or permission to execute one.
 
 ## Planned contracts — not implemented yet
 
-These are design targets for the Work Mapping and Guided Discovery milestone, not claims about current route availability.
+The following are design targets for the Work Mapping and Guided Discovery milestone and later phases, not claims about current route availability.
 
 ### Work map and guided discovery
 
@@ -44,8 +71,6 @@ A discovery session must preserve conversation state, current structured facts, 
 - `GET /opportunities/{id}/interventions`
 - `POST /opportunities/{id}/interventions`
 - `POST /opportunities/{id}/assessments`
-
-An opportunity may have multiple intervention candidates, including automation, process redesign, policy/approval simplification, training, capacity change and data-quality remediation.
 
 ### Workflow library and research
 
@@ -82,7 +107,7 @@ Production dispatch must be tied to an exact immutable workflow artifact/version
 
 - Enforce tenant scope on every read, write, search, file access and asynchronous job.
 - Derive tenant identity from the verified principal, never from caller-controlled tenant headers or body fields.
-- Use cursor pagination for collections.
+- Use cursor pagination for collection endpoints.
 - Use idempotency keys for commands that may be retried or cause external effects.
 - Use stable error codes, request/correlation IDs and structured validation errors.
 - Represent long-running research, ingestion, generation and validation as durable asynchronous jobs.

@@ -126,8 +126,14 @@ Production dispatch must be tied to an exact immutable workflow artifact/version
 
 ## Authentication and tenant context
 
-- Protected routes require a verified `AuthenticatedPrincipal` created by a configured identity adapter.
+- Protected routes require a verified `AuthenticatedPrincipal` created by the configured identity adapter.
 - The principal contains the verified subject, issuer, internal tenant UUID, roles and permissions.
 - Tenant context is derived from that principal; `x-tenant-id` and other caller-controlled headers are never proof of tenant membership.
 - Missing, malformed, expired or unverifiable identity fails closed with HTTP 401. Missing permission returns HTTP 403.
-- The identity adapter is intentionally provider-neutral. No provider is selected or connected yet; protected domain routes must not be enabled in production until a production-grade verifier and active-membership lookup are configured.
+- When OIDC is configured, CIAS accepts only signed JWT access tokens matching the documented access-token profile. ID tokens and generic JWTs are not API credentials.
+- OIDC signature verification uses HTTPS JWKS, issuer/audience validation, the RS256/ES256 allowlist and an explicit `at+jwt` protected-header type. The token must contain `sub`, `client_id`, `jti`, `iat` and `exp`.
+- The signed tenant claim identifies the requested internal tenant, but access is granted only when an active `tenant_memberships` row matches tenant, issuer and subject and the tenant itself is active.
+- Roles and permissions are loaded from the membership record, never from token-supplied role/permission claims.
+- If the OIDC environment trio is unset in development, protected routes remain deny-by-default. Production startup requires OIDC issuer, audience and JWKS URL. No identity provider is selected or connected by this implementation.
+
+See `docs/17-oidc-authentication.md` for the exact token profile, membership provisioning boundary and security behavior.

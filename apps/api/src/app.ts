@@ -49,6 +49,7 @@ export function createApp(
   );
   application.use(
     "/api/v1/business-processes/:processId/models",
+    authenticationMiddleware(identityVerifier),
     createProcessModelsRouter(processModelRepository)
   );
   application.use(

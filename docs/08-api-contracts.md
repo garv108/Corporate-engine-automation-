@@ -14,7 +14,7 @@ The API keeps database access, authentication, tenant resolution, authorization,
 | Departments | `GET/POST /departments`, `GET/PATCH /departments/{id}` | Implemented |
 | Business processes | `GET/POST /business-processes`, `GET/PATCH /business-processes/{id}` | Implemented |
 | Process models | `GET/POST /business-processes/{processId}/models`, `GET/PUT /business-processes/{processId}/models/{modelVersionId}`, `POST .../{modelVersionId}/confirm`, `POST .../{modelVersionId}/publish`, `POST .../{modelVersionId}/facts/{factId}/review` | Implemented as the M1-A versioned process-map foundation |
-| Process discovery sessions | `GET/POST /process-discovery/sessions`, `GET /process-discovery/sessions/{sessionId}`, `POST .../{sessionId}/turns`, `POST .../{sessionId}/confirm` | Implemented as the M1-B persistence and deterministic completeness foundation |
+| Process discovery sessions | `GET/POST /process-discovery/sessions`, `GET /process-discovery/sessions/{sessionId}`, `POST .../{sessionId}/turns`, `POST .../{sessionId}/confirm`, `POST .../{sessionId}/convert` | Implemented as the M1-B persistence, deterministic completeness and confirmed-snapshot conversion foundation |
 | Automation opportunities | `GET/POST /opportunities`, `GET/PATCH /opportunities/{id}` | Implemented as a basic persistence/API slice; not a complete discovery or workflow-library feature |
 
 ### Collection pagination
@@ -65,6 +65,7 @@ Implemented routes:
 - `GET /process-discovery/sessions/{sessionId}` — resume a session with its turns, current draft, fact-event history, completeness result and next question.
 - `POST /process-discovery/sessions/{sessionId}/turns` — append a user message and structured fact updates; supply the current revision and, when answering a specific prompt, its question ID.
 - `POST /process-discovery/sessions/{sessionId}/confirm` — confirm a ready-for-review discovery snapshot using its current revision and explicitly acknowledge unresolved uncertainties when present.
+- `POST /process-discovery/sessions/{sessionId}/convert` — with separate discovery-conversion, business-process-create and process-model-create permissions, convert a confirmed snapshot into one tenant-scoped Business Process Catalogue record and its first draft process-model version. The conversion is transactional and idempotent. It does not confirm or publish the process model.
 
 The deterministic minimum completeness gate requires purpose, trigger, expected outcome and at least one valid process step. It reports optional recommended areas separately, including scope, systems/tools, inputs/outputs, decisions, exceptions, human judgement, volume, timing, baseline, data handling and constraints. The draft also preserves explicit unresolved uncertainty records, including the field affected and why the uncertainty matters. A missing optional detail is not automatically treated as a blocker or as proof that the process has no such detail.
 
@@ -137,3 +138,8 @@ Production dispatch must be tied to an exact immutable workflow artifact/version
 - If the OIDC environment trio is unset in development, protected routes remain deny-by-default. Production startup requires OIDC issuer, audience and JWKS URL. No identity provider is selected or connected by this implementation.
 
 See `docs/17-oidc-authentication.md` for the exact token profile, membership provisioning boundary and security behavior.
+
+
+### Discovery conversion permission boundary
+
+A confirmed discovery snapshot is not itself a catalogue process model. Conversion creates a Business Process record and a draft process-model version in one database transaction, links both to the source discovery session, copies current fact provenance and records audit events. A unique tenant/session conversion link prevents duplicate catalogue records on retries. The process model remains `draft` and must pass its own review/confirmation and publication lifecycle. The conversion endpoint requires all three permissions: `process_discovery_sessions:convert`, `business_processes:create` and `business_process_models:create`.

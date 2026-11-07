@@ -451,6 +451,33 @@ async function loadModel(
   return { ...model, steps, transitions, evidence, facts };
 }
 
+export async function createProcessModelInTransaction(
+  client: PoolClient,
+  tenantId: string,
+  processId: string,
+  actorId: string,
+  input: ProcessModelInput
+): Promise<ProcessModel> {
+  const versionResult = await client.query<{ nextVersion: number }>(
+    "SELECT COALESCE(MAX(version), 0) + 1 AS \"nextVersion\" FROM business_process_model_versions WHERE tenant_id=$1 AND process_id=$2",
+    [tenantId, processId]
+  );
+  const version = versionResult.rows[0]!.nextVersion;
+  const inserted = await client.query<{ id: string }>(
+    "INSERT INTO business_process_model_versions " +
+    "(tenant_id, process_id, version, status, purpose, scope, trigger_definition, expected_outcome, schema_version, content_hash, created_by, updated_by) " +
+    "VALUES ($1,$2,$3,'draft',$4,$5,$6,$7,1,$8,$9,$9) RETURNING id",
+    [tenantId, processId, version, input.purpose ?? null, input.scope ?? null, input.trigger ?? null,
+      input.expectedOutcome ?? null, contentDigest(input), actorId]
+  );
+  const modelId = inserted.rows[0]!.id;
+  await saveChildren(client, tenantId, modelId, actorId, input);
+  await writeAuditEvent(client, tenantId, actorId, "business_process_model.created", modelId, { processId, version });
+  const model = await loadModel(client, tenantId, processId, modelId);
+  if (!model) throw new Error("Created process model could not be loaded");
+  return model;
+}
+
 export interface ProcessModelRepository {
   list(tenantId: string, processId: string): Promise<ProcessModelSummary[] | null>;
   get(tenantId: string, processId: string, modelId: string): Promise<ProcessModel | null>;
@@ -505,22 +532,7 @@ export const postgresProcessModelRepository: ProcessModelRepository = {
         await client.query("ROLLBACK");
         return null;
       }
-      const versionResult = await client.query<{ nextVersion: number }>(
-        "SELECT COALESCE(MAX(version), 0) + 1 AS \"nextVersion\" FROM business_process_model_versions WHERE tenant_id=$1 AND process_id=$2",
-        [tenantId, processId]
-      );
-      const version = versionResult.rows[0]!.nextVersion;
-      const inserted = await client.query<{ id: string }>(
-        "INSERT INTO business_process_model_versions " +
-        "(tenant_id, process_id, version, status, purpose, scope, trigger_definition, expected_outcome, schema_version, content_hash, created_by, updated_by) " +
-        "VALUES ($1,$2,$3,'draft',$4,$5,$6,$7,1,$8,$9,$9) RETURNING id",
-        [tenantId, processId, version, input.purpose ?? null, input.scope ?? null, input.trigger ?? null,
-          input.expectedOutcome ?? null, contentDigest(input), actorId]
-      );
-      const modelId = inserted.rows[0]!.id;
-      await saveChildren(client, tenantId, modelId, actorId, input);
-      await writeAuditEvent(client, tenantId, actorId, "business_process_model.created", modelId, { processId, version });
-      const model = await loadModel(client, tenantId, processId, modelId);
+      const model = await createProcessModelInTransaction(client, tenantId, processId, actorId, input);
       await client.query("COMMIT");
       return model;
     } catch (error) {

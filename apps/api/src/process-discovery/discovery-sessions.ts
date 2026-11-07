@@ -491,6 +491,10 @@ const turnSchema = z.object({
   answerToQuestionId: z.string().trim().min(1).max(64).optional()
 }).strict();
 const confirmSchema = z.object({ expectedRevision: z.number().int().nonnegative(), acknowledgeUnresolved: z.boolean().default(false) }).strict();
+const convertSchema = z.object({
+  name: z.string().trim().min(2).max(160),
+  description: z.string().trim().max(2000).nullable().optional()
+}).strict();
 const uuidSchema = z.string().uuid();
 
 function invalid(response: Response, message: string): void {
@@ -498,6 +502,10 @@ function invalid(response: Response, message: string): void {
 }
 
 function handleError(error: unknown, response: Response): boolean {
+  if (error instanceof DiscoverySessionConversionError) {
+    response.status(409).json({ error: { code: "DISCOVERY_NOT_CONFIRMED", message: error.message, status: error.state } });
+    return true;
+  }
   if (error instanceof DiscoverySessionRevisionError) {
     response.status(409).json({ error: { code: "REVISION_CONFLICT", message: error.message, currentRevision: error.currentRevision } });
     return true;
@@ -599,6 +607,31 @@ export function createDiscoverySessionsRouter(repository: DiscoverySessionReposi
       if (!handleError(error, response)) throw error;
     }
   });
+
+  router.post(
+    "/:sessionId/convert",
+    requirePermission("process_discovery_sessions:convert"),
+    requirePermission("business_processes:create"),
+    requirePermission("business_process_models:create"),
+    async (request, response) => {
+      const id = uuidSchema.safeParse(request.params.sessionId);
+      const parsed = convertSchema.safeParse(request.body);
+      if (!id.success) return invalid(response, "Discovery session ID must be a UUID");
+      if (!parsed.success) return invalid(response, parsed.error.issues[0]?.message ?? "Invalid conversion payload");
+      try {
+        const conversion = await repository.convertToProcess(
+          request.principal!.tenantId,
+          id.data,
+          request.principal!.subject,
+          parsed.data
+        );
+        if (!conversion) return response.status(404).json({ error: { code: "NOT_FOUND", message: "Discovery session not found" } });
+        response.status(conversion.alreadyConverted ? 200 : 201).json({ data: conversion });
+      } catch (error) {
+        if (!handleError(error, response)) throw error;
+      }
+    }
+  );
 
   return router;
 }

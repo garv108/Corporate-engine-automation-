@@ -17,7 +17,7 @@ The first milestone is not a universal autonomous automation platform. It is a r
 3. A guided interview asks focused questions about missing or ambiguous facts. Follow-up questions may drill into prior answers.
 4. CIAS maintains a structured draft and records which facts came from a person, an approved system, a document or an AI inference.
 5. The interview has an explicit completeness gate. CIAS explains what remains unknown and why it matters; it must not invent missing facts.
-6. The user reviews, edits and confirms the current-state work map.
+6. The user reviews, edits and confirms the current-state work map. A separate explicit conversion action creates a catalogue process record and draft process-model version; it does not publish the process.
 7. CIAS identifies bottlenecks and candidate interventions. It compares automation with process redesign, removal of unnecessary work, policy/approval simplification, training, capacity changes and data-quality fixes.
 8. CIAS searches the initial curated workflow library and ranks relevant patterns/assets against the confirmed requirements.
 9. The recommendation explains fit, compatibility, dependencies, permissions, credentials, licensing/cost, limitations, verification evidence and human intervention points.

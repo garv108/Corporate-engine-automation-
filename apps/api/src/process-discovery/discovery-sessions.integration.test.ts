@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../db/pool.js";
-import { postgresDiscoverySessionRepository } from "./discovery-sessions.js";
+import { DiscoverySessionConversionError, postgresDiscoverySessionRepository } from "./discovery-sessions.js";
 
 const tenantA = randomUUID();
 const tenantB = randomUUID();
@@ -28,6 +28,96 @@ async function createTenant(id: string, name: string): Promise<void> {
 }
 
 describe("Process Discovery Sessions PostgreSQL persistence and lifecycle", () => {
+
+  it("converts a confirmed snapshot atomically into one catalogue process and a draft model, idempotently", async () => {
+    const session = await postgresDiscoverySessionRepository.create(tenantA, actorId, {
+      initialDescription: description, factUpdates: []
+    });
+    const answered = await postgresDiscoverySessionRepository.turn(tenantA, session.id, actorId, {
+      message: "The purpose, trigger, outcome and activities are captured.",
+      factUpdates: completeFacts,
+      expectedRevision: session.revision
+    });
+    const confirmed = await postgresDiscoverySessionRepository.confirm(
+      tenantA, session.id, actorId, answered!.revision
+    );
+
+    const conversion = await postgresDiscoverySessionRepository.convertToProcess(
+      tenantA, session.id, actorId, { name: "Internal service request handling" }
+    );
+    expect(conversion).toMatchObject({
+      sessionId: session.id,
+      processName: "Internal service request handling",
+      modelVersion: 1,
+      modelStatus: "draft",
+      alreadyConverted: false
+    });
+
+    const process = await pool.query(
+      "SELECT name,description,sensitivity FROM business_processes WHERE tenant_id=$1 AND id=$2",
+      [tenantA, conversion!.processId]
+    );
+    expect(process.rows[0]).toMatchObject({
+      name: "Internal service request handling",
+      description: "Resolve internal service requests",
+      sensitivity: "unknown"
+    });
+
+    const model = await pool.query(
+      "SELECT status,purpose,trigger_definition,expected_outcome FROM business_process_model_versions WHERE tenant_id=$1 AND process_id=$2 AND id=$3",
+      [tenantA, conversion!.processId, conversion!.modelVersionId]
+    );
+    expect(model.rows[0]).toMatchObject({
+      status: "draft",
+      purpose: "Resolve internal service requests",
+      trigger_definition: "A team submits a request",
+      expected_outcome: "The request is resolved or returned with a reason"
+    });
+    const [steps, transitions, evidence, facts] = await Promise.all([
+      pool.query("SELECT step_key,kind,name FROM business_process_model_steps WHERE tenant_id=$1 AND model_version_id=$2 ORDER BY step_key", [tenantA, conversion!.modelVersionId]),
+      pool.query("SELECT count(*)::int AS count FROM business_process_model_transitions WHERE tenant_id=$1 AND model_version_id=$2", [tenantA, conversion!.modelVersionId]),
+      pool.query("SELECT source_kind,source_label,source_reference FROM business_process_model_evidence WHERE tenant_id=$1 AND model_version_id=$2", [tenantA, conversion!.modelVersionId]),
+      pool.query("SELECT field_path,provenance_kind,evidence_id FROM business_process_model_facts WHERE tenant_id=$1 AND model_version_id=$2", [tenantA, conversion!.modelVersionId])
+    ]);
+    expect(steps.rows).toHaveLength(3);
+    expect(transitions.rows[0]?.count).toBe(2);
+    expect(evidence.rows[0]).toMatchObject({
+      source_kind: "user_input",
+      source_label: "Confirmed discovery session",
+      source_reference: "cias://process-discovery/sessions/" + session.id
+    });
+    expect(facts.rows.length).toBeGreaterThanOrEqual(4);
+    expect(facts.rows.every((fact) => fact.provenance_kind === "user_statement" && fact.evidence_id === evidence.rows[0]?.id)).toBe(true);
+
+    const repeated = await postgresDiscoverySessionRepository.convertToProcess(
+      tenantA, session.id, actorId, { name: "A different name must not duplicate the conversion" }
+    );
+    expect(repeated).toMatchObject({
+      processId: conversion!.processId,
+      modelVersionId: conversion!.modelVersionId,
+      alreadyConverted: true
+    });
+    const count = await pool.query(
+      "SELECT count(*)::int AS count FROM process_discovery_conversions WHERE tenant_id=$1 AND session_id=$2",
+      [tenantA, session.id]
+    );
+    expect(count.rows[0]?.count).toBe(1);
+    expect(confirmed?.status).toBe("confirmed");
+  });
+
+  it("refuses conversion until the discovery snapshot has been confirmed and enforces tenant scope", async () => {
+    const session = await postgresDiscoverySessionRepository.create(tenantA, actorId, {
+      initialDescription: description, factUpdates: []
+    });
+    await expect(
+      postgresDiscoverySessionRepository.convertToProcess(tenantA, session.id, actorId, { name: "Unconfirmed process" })
+    ).rejects.toBeInstanceOf(DiscoverySessionConversionError);
+    await expect(
+      postgresDiscoverySessionRepository.convertToProcess(tenantB, session.id, actorId, { name: "Cross-tenant process" })
+    ).resolves.toBeNull();
+  });
+
+
   beforeAll(async () => {
     await createTenant(tenantA, "Discovery tenant A");
     await createTenant(tenantB, "Discovery tenant B");
@@ -35,6 +125,8 @@ describe("Process Discovery Sessions PostgreSQL persistence and lifecycle", () =
 
   afterAll(async () => {
     await pool.query("DELETE FROM audit_events WHERE tenant_id = ANY($1::uuid[])", [[tenantA, tenantB]]);
+    await pool.query("DELETE FROM process_discovery_conversions WHERE tenant_id = ANY($1::uuid[])", [[tenantA, tenantB]]);
+    await pool.query("DELETE FROM business_processes WHERE tenant_id = ANY($1::uuid[])", [[tenantA, tenantB]]);
     await pool.query("DELETE FROM process_discovery_sessions WHERE tenant_id = ANY($1::uuid[])", [[tenantA, tenantB]]);
     await pool.query("DELETE FROM tenants WHERE id = ANY($1::uuid[])", [[tenantA, tenantB]]);
   }, 15_000);

@@ -13,7 +13,10 @@ const permissions = [
   "process_discovery_sessions:read",
   "process_discovery_sessions:create",
   "process_discovery_sessions:update",
-  "process_discovery_sessions:confirm"
+  "process_discovery_sessions:confirm",
+  "process_discovery_sessions:convert",
+  "business_processes:create",
+  "business_process_models:create"
 ];
 const principal: AuthenticatedPrincipal = {
   subject: "user-a",
@@ -72,7 +75,12 @@ function createRepository(): DiscoverySessionRepository {
       currentQuestionId: null,
       nextQuestion: null
     }),
-    confirm: vi.fn().mockResolvedValue({ ...session, status: "confirmed", revision: 3, confirmedBy: "user-a" })
+    confirm: vi.fn().mockResolvedValue({ ...session, status: "confirmed", revision: 3, confirmedBy: "user-a" }),
+    convertToProcess: vi.fn().mockResolvedValue({
+      sessionId, processId: "44444444-4444-4444-8444-444444444444",
+      processName: "Internal service requests", modelVersionId: "55555555-5555-4555-8555-555555555555",
+      modelVersion: 1, modelStatus: "draft", createdAt: "2026-11-07T00:00:00.000Z", alreadyConverted: false
+    })
   };
 }
 
@@ -81,6 +89,32 @@ function createVerifier(value: unknown = principal): IdentityVerifier {
 }
 
 describe("Process Discovery Sessions API", () => {
+
+  it("converts a confirmed discovery snapshot only with all conversion permissions", async () => {
+    const repository = createRepository();
+    const response = await request(createApp(createVerifier(), undefined, undefined, undefined, undefined, repository))
+      .post("/api/v1/process-discovery/sessions/" + sessionId + "/convert")
+      .send({ name: "Internal service requests", description: "Resolve requests raised by internal teams" });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data.modelStatus).toBe("draft");
+    expect(repository.convertToProcess).toHaveBeenCalledWith(tenantA, sessionId, "user-a", {
+      name: "Internal service requests", description: "Resolve requests raised by internal teams"
+    });
+  });
+
+  it("denies conversion when process-model creation permission is missing", async () => {
+    const repository = createRepository();
+    const limitedPrincipal = { ...principal, permissions: permissions.filter((permission) => permission !== "business_process_models:create") };
+    const response = await request(createApp(createVerifier(limitedPrincipal), undefined, undefined, undefined, undefined, repository))
+      .post("/api/v1/process-discovery/sessions/" + sessionId + "/convert")
+      .send({ name: "Internal service requests" });
+
+    expect(response.status).toBe(403);
+    expect(repository.convertToProcess).not.toHaveBeenCalled();
+  });
+
+
   it("creates a durable session from a natural-language description and returns the next focused question", async () => {
     const repository = createRepository();
     const response = await request(createApp(createVerifier(), undefined, undefined, undefined, undefined, repository))

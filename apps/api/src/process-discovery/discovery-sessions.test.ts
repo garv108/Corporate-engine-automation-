@@ -31,7 +31,7 @@ const session: DiscoverySession = {
   classification: "unknown",
   currentDraft: {
     purpose: null, scope: null, trigger: null, expectedOutcome: null,
-    steps: [], transitions: [], evidence: [],
+    steps: [], transitions: [], evidence: [], uncertainties: [],
     context: {
       systems: [], inputs: [], outputs: [], decisions: [], exceptions: [],
       humanJudgement: null, volume: null, timing: null, baseline: null,

@@ -453,11 +453,11 @@ export const postgresDiscoverySessionRepository = new PostgresDiscoverySessionRe
 
 const createSchema = z.object({
   initialDescription: z.string().trim().min(10).max(10000),
-  factUpdates: z.array(z.object({ fieldPath: z.string().trim().min(1).max(256), value: z.unknown() }).strict()).max(20).default([])
+  factUpdates: z.array(z.object({ fieldPath: z.string().trim().min(1).max(256), value: z.custom<unknown>(() => true) }).strict()).max(20).default([])
 }).strict();
 const turnSchema = z.object({
   message: z.string().trim().min(1).max(10000),
-  factUpdates: z.array(z.object({ fieldPath: z.string().trim().min(1).max(256), value: z.unknown() }).strict()).min(1).max(20),
+  factUpdates: z.array(z.object({ fieldPath: z.string().trim().min(1).max(256), value: z.custom<unknown>(() => true) }).strict()).min(1).max(20),
   expectedRevision: z.number().int().nonnegative(),
   answerToQuestionId: z.string().trim().min(1).max(64).optional()
 }).strict();

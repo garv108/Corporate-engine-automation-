@@ -116,6 +116,15 @@ describe("Process Discovery Sessions PostgreSQL persistence and lifecycle", () =
       tenantA, session.id, actorId, updated!.revision, true
     );
     expect(confirmed?.status).toBe("confirmed");
+    const audit = await pool.query(
+      "SELECT metadata FROM audit_events WHERE tenant_id=$1 AND resource_type='process_discovery_session' AND resource_id=$2 AND action='process_discovery_session.confirmed'",
+      [tenantA, session.id]
+    );
+    expect(audit.rows[0]?.metadata.acknowledgedUncertainties).toEqual([{
+      fieldPath: "context.volume",
+      description: "Peak monthly request volume is not yet known",
+      whyItMatters: "Capacity and impact estimates may be unreliable without a volume baseline"
+    }]);
   });
 
   it("does not allow superseded fact history to be edited or restored", async () => {

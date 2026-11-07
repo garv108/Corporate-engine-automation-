@@ -429,7 +429,10 @@ export class PostgresDiscoverySessionRepository implements DiscoverySessionRepos
         [tenantId, sessionId]
       );
       const seq = Number(seqResult.rows[0].next);
-      await addTurn(client, tenantId, sessionId, seq, "user", "I reviewed and confirm this discovery snapshot.", null, actorId);
+      const confirmationText = current.completeness.openUncertainties.length
+        ? "I reviewed and confirm this discovery snapshot, including acknowledgement of the unresolved uncertainty items recorded with this confirmation."
+        : "I reviewed and confirm this discovery snapshot.";
+      await addTurn(client, tenantId, sessionId, seq, "user", confirmationText, null, actorId);
       await addTurn(client, tenantId, sessionId, seq + 1, "assistant",
         "Discovery snapshot confirmed. This does not publish an official process model or authorize automation.", null, null);
       await client.query(
@@ -444,7 +447,11 @@ export class PostgresDiscoverySessionRepository implements DiscoverySessionRepos
       );
       await audit(client, tenantId, actorId, "process_discovery_session.confirmed", sessionId, {
         previousRevision: current.revision, nextRevision: current.revision + 1, contentScope: "discovery_snapshot_only",
-        acknowledgedUncertainties: current.completeness.openUncertainties.length
+        acknowledgedUncertainties: current.completeness.openUncertainties.map((item) => ({
+          fieldPath: item.fieldPath,
+          description: item.description,
+          whyItMatters: item.whyItMatters ?? null
+        }))
       });
       const session = await load(client, tenantId, sessionId);
       await client.query("COMMIT");

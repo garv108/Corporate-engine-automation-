@@ -2,7 +2,11 @@ import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import type { AuthenticatedPrincipal, IdentityVerifier } from "../auth/auth.js";
 import { createApp } from "../app.js";
-import type { AutomationOpportunity, AutomationOpportunityRepository } from "./opportunities.js";
+import {
+  OpportunityStatusTransitionError,
+  type AutomationOpportunity,
+  type AutomationOpportunityRepository
+} from "./opportunities.js";
 
 const tenantA = "11111111-1111-4111-8111-111111111111";
 const tenantB = "22222222-2222-4222-8222-222222222222";
@@ -23,10 +27,6 @@ const opportunity: AutomationOpportunity = {
   title: "Invoice automation",
   problemStatement: "Manual invoice entry creates repetitive work",
   proposedOutcome: null,
-  feasibilityScore: null,
-  impactScore: null,
-  complexityScore: null,
-  confidence: null,
   impactEstimate: {},
   evidenceRefs: [],
   status: "discovered"
@@ -133,17 +133,41 @@ describe("tenant-scoped Automation Opportunities API", () => {
     expect(response.body.error.code).toBe("INVALID_ASSOCIATION");
   });
 
-  it("validates numeric scores and UUID path parameters", async () => {
+  it("rejects caller-supplied scores until a versioned assessment method exists", async () => {
     const repository = createRepository();
-    const invalidScore = await request(createApp(createVerifier(), undefined, undefined, repository))
+    const response = await request(createApp(createVerifier(), undefined, undefined, repository))
       .post("/api/v1/opportunities")
-      .send({ title: "Invoice automation", problemStatement: "Manual invoice entry creates repetitive work", impactScore: 120 });
-    const invalidId = await request(createApp(createVerifier(), undefined, undefined, repository))
-      .get("/api/v1/opportunities/not-a-uuid");
+      .send({
+        title: "Invoice automation",
+        problemStatement: "Manual invoice entry creates repetitive work",
+        impactScore: 99,
+        confidence: 0.99
+      });
 
-    expect(invalidScore.status).toBe(400);
-    expect(invalidId.status).toBe(400);
+    expect(response.status).toBe(400);
     expect(repository.create).not.toHaveBeenCalled();
-    expect(repository.get).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsupported lifecycle labels", async () => {
+    const repository = createRepository();
+    const response = await request(createApp(createVerifier(), undefined, undefined, repository))
+      .patch("/api/v1/opportunities/" + opportunityId)
+      .send({ status: "active" });
+
+    expect(response.status).toBe(400);
+    expect(repository.update).not.toHaveBeenCalled();
+  });
+
+  it("returns a conflict when an opportunity skips a lifecycle stage", async () => {
+    const repository = createRepository();
+    vi.mocked(repository.update).mockRejectedValue(
+      new OpportunityStatusTransitionError("discovered", "approved_for_design")
+    );
+    const response = await request(createApp(createVerifier(), undefined, undefined, repository))
+      .patch("/api/v1/opportunities/" + opportunityId)
+      .send({ status: "approved_for_design" });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe("INVALID_STATUS_TRANSITION");
   });
 });

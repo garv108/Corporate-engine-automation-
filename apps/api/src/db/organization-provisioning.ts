@@ -18,6 +18,7 @@ export const organizationAdminPermissions = [
 ] as const;
 
 export type ProvisionOrganizationInput = {
+  requestId: string;
   name: string;
   issuer: string;
   operatorSubject: string;
@@ -27,6 +28,7 @@ export type ProvisionOrganizationInput = {
 export type ProvisionOrganizationResult = {
   organization: { id: string; name: string; status: string };
   initialAdministrator: { subject: string; role: "organization_admin" };
+  replayed: boolean;
 };
 
 export async function provisionOrganization(
@@ -35,12 +37,41 @@ export async function provisionOrganization(
 ): Promise<ProvisionOrganizationResult> {
   await client.query("BEGIN");
   try {
+    // Serialize retries for this request key, including concurrent invocations.
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))", [input.requestId]);
+
     const operator = await client.query(
       "SELECT id FROM cias_platform_operators WHERE issuer = $1 AND subject = $2 AND status = 'active' FOR SHARE",
       [input.issuer, input.operatorSubject]
     );
     if (!operator.rows[0]) {
       throw new Error("Caller is not an active CIAS platform operator");
+    }
+
+    const previous = await client.query<{
+      tenantId: string; name: string; status: string; issuer: string;
+      adminSubject: string; operatorSubject: string;
+    }>(
+      "SELECT request.tenant_id AS \"tenantId\", tenant.name, tenant.status, request.issuer, " +
+      "request.admin_subject AS \"adminSubject\", request.operator_subject AS \"operatorSubject\" " +
+      "FROM cias_organization_provisioning_requests AS request " +
+      "JOIN tenants AS tenant ON tenant.id = request.tenant_id WHERE request.request_id = $1",
+      [input.requestId]
+    );
+    if (previous.rows[0]) {
+      const existing = previous.rows[0];
+      if (
+        existing.name !== input.name || existing.issuer !== input.issuer ||
+        existing.adminSubject !== input.adminSubject || existing.operatorSubject !== input.operatorSubject
+      ) {
+        throw new Error("Provisioning request ID was already used with different organization details");
+      }
+      await client.query("COMMIT");
+      return {
+        organization: { id: existing.tenantId, name: existing.name, status: existing.status },
+        initialAdministrator: { subject: existing.adminSubject, role: "organization_admin" },
+        replayed: true
+      };
     }
 
     const tenant = await client.query<{ id: string; name: string; status: string }>(
@@ -60,9 +91,17 @@ export async function provisionOrganization(
     if (!membershipId) throw new Error("Initial administrator membership was not created");
 
     await client.query(
+      "INSERT INTO cias_organization_provisioning_requests " +
+      "(request_id, tenant_id, organization_name, issuer, admin_subject, operator_subject) " +
+      "VALUES ($1, $2, $3, $4, $5, $6)",
+      [input.requestId, tenantId, input.name, input.issuer, input.adminSubject, input.operatorSubject]
+    );
+
+    await client.query(
       "INSERT INTO audit_events (tenant_id, actor_type, actor_id, action, resource_type, resource_id, decision, metadata) " +
       "VALUES ($1, 'platform_operator', $2, 'organization.provisioned', 'tenant', $1::text, 'allowed', $3::jsonb)",
       [tenantId, input.operatorSubject, JSON.stringify({
+        requestId: input.requestId,
         organizationName: input.name,
         initialAdministratorMembershipId: membershipId,
         initialRole: "organization_admin",
@@ -73,7 +112,8 @@ export async function provisionOrganization(
 
     return {
       organization: { id: tenantId, name: tenant.rows[0]!.name, status: tenant.rows[0]!.status },
-      initialAdministrator: { subject: input.adminSubject, role: "organization_admin" }
+      initialAdministrator: { subject: input.adminSubject, role: "organization_admin" },
+      replayed: false
     };
   } catch (error) {
     await client.query("ROLLBACK");

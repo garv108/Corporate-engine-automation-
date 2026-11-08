@@ -12,9 +12,9 @@ if (!provisioningDatabaseUrl) {
 }
 const pool = new Pool({ connectionString: provisioningDatabaseUrl, max: 1 });
 
-function parseArguments(args: string[]): { name: string; adminSubject: string } {
+function parseArguments(args: string[]): { requestId: string; name: string; adminSubject: string } {
   const values = new Map<string, string>();
-  const allowed = new Set(["--name", "--admin-subject"]);
+  const allowed = new Set(["--request-id", "--name", "--admin-subject"]);
   for (let index = 0; index < args.length; index += 2) {
     const flag = args[index];
     const value = args[index + 1];
@@ -26,17 +26,21 @@ function parseArguments(args: string[]): { name: string; adminSubject: string } 
     values.set(flag, value.trim());
   }
 
+  const requestId = values.get("--request-id");
   const name = values.get("--name");
   const adminSubject = values.get("--admin-subject");
+  if (!requestId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)) {
+    throw new Error("--request-id must be a UUID and must be reused for retries");
+  }
   if (!name) throw new Error("Missing required argument: --name");
   if (!adminSubject) throw new Error("Missing required argument: --admin-subject");
   if (name.length < 2 || name.length > 200) throw new Error("--name must be 2–200 characters");
   if (adminSubject.length > 255) throw new Error("--admin-subject must be at most 255 characters");
-  return { name, adminSubject };
+  return { requestId, name, adminSubject };
 }
 
 async function main(): Promise<void> {
-  const { name, adminSubject } = parseArguments(process.argv.slice(2));
+  const { requestId, name, adminSubject } = parseArguments(process.argv.slice(2));
   const token = process.env.CIAS_PLATFORM_OPERATOR_TOKEN;
   if (!token) throw new Error("CIAS_PLATFORM_OPERATOR_TOKEN is required");
   if (!config.OIDC_ISSUER || !config.OIDC_AUDIENCE || !config.OIDC_JWKS_URL) {
@@ -61,6 +65,7 @@ async function main(): Promise<void> {
   const client = await pool.connect();
   try {
     const result = await provisionOrganization(client, {
+      requestId,
       name,
       issuer: config.OIDC_ISSUER,
       operatorSubject: claims.sub,

@@ -10,12 +10,13 @@ CIAS uses controlled, platform-managed organization onboarding. Public organizat
 2. The operator authenticates to the provisioning command with a signed OIDC access token. The command verifies signature, issuer, audience, token type, expiry and required access-token claims using the configured HTTPS JWKS endpoint.
 3. The command checks the operator allowlist inside the same database transaction used for provisioning.
 4. It creates the tenant and the first active `organization_admin` membership atomically.
-5. The initial administrator is identified by an immutable OIDC subject supplied to the trusted command. The command does not create an identity-provider account, send an invitation, or assume that the subject already has a CIAS token.
-6. Normal API access still requires a signed tenant claim plus an active tenant membership. Roles and permissions are loaded from the database, never from token-supplied authorization claims.
+5. A required UUID request ID makes provisioning idempotent. Repeating the same request ID and details returns the already-created organization; reusing the ID with different details fails. A transaction-scoped advisory lock serializes concurrent retries.
+6. The initial administrator is identified by an immutable OIDC subject supplied to the trusted command. The command does not create an identity-provider account, send an invitation, or assume that the subject already has a CIAS token.
+7. Normal API access still requires a signed tenant claim plus an active tenant membership. Roles and permissions are loaded from the database, never from token-supplied authorization claims.
 
 ## Provisioning workflow
 
-`trusted DBA allowlists platform operator → operator obtains OIDC access token → operator runs provisioning command → tenant + initial membership + audit commit atomically → identity provider maps admin subject to tenant claim → admin signs in → admin onboards departments and employee profiles`
+`trusted DBA allowlists platform operator → operator obtains OIDC access token → operator runs provisioning command with a stable request UUID → tenant + initial membership + idempotency record + audit commit atomically → identity provider maps admin subject to tenant claim → admin signs in → admin onboards departments and employee profiles`
 
 The command is intentionally out-of-band. There is no HTTP route that creates tenants, grants the platform-owner role, or changes membership permissions.
 
@@ -28,17 +29,17 @@ INSERT INTO cias_platform_operators (issuer, subject, created_by)
 VALUES ('https://YOUR-ISSUER', 'IMMUTABLE-OPERATOR-SUBJECT', 'DBA-CHANGE-REFERENCE');
 ```
 
-Do not expose this table to the application runtime role for arbitrary writes. In production, separate migration, provisioning and application database roles. The provisioning role needs only SELECT on `cias_platform_operators`, INSERT on `tenants`, `tenant_memberships` and `audit_events`, plus the minimum sequence/function privileges required by those inserts and audit triggers. It must not be able to add or modify platform operators. The API runtime role must not be able to create tenants or memberships. Operator allowlisting and revocation remain DBA-controlled.
+Do not expose this table to the application runtime role for arbitrary writes. In production, separate migration, provisioning and application database roles. The provisioning role needs SELECT on `cias_platform_operators`, SELECT and INSERT on `cias_organization_provisioning_requests`, INSERT on `tenants`, `tenant_memberships` and `audit_events`, plus the minimum sequence/function privileges required by those inserts and audit triggers. It must not be able to add or modify platform operators. The API runtime role must not be able to create tenants or memberships. Operator allowlisting and revocation remain DBA-controlled.
 
 ## Provisioning command
 
-From the repository root, after migration and identity-provider configuration:
+From the repository root, after migrations and identity-provider configuration:
 
 ```bash
-CIAS_PLATFORM_OPERATOR_TOKEN='SHORT-LIVED-ACCESS-TOKEN' pnpm --filter @cias/api db:provision-organization -- --name "Example Organization" --admin-subject "IMMUTABLE-ADMIN-SUBJECT"
+CIAS_PLATFORM_OPERATOR_TOKEN='SHORT-LIVED-ACCESS-TOKEN' pnpm --filter @cias/api db:provision-organization -- --request-id "$(uuidgen)" --name "Example Organization" --admin-subject "IMMUTABLE-ADMIN-SUBJECT"
 ```
 
-Set `CIAS_PROVISIONING_DATABASE_URL` to a dedicated restricted database role (do not reuse the API runtime role) and `CIAS_PLATFORM_OPERATOR_TOKEN` to a short-lived access token. The token is read from the environment and is never printed. Prefer injecting both values from a local secret manager rather than shell history. The command prints only the created tenant ID, name, status and initial admin subject/role.
+Set `CIAS_PROVISIONING_DATABASE_URL` to a dedicated restricted database role (do not reuse the API runtime role) and `CIAS_PLATFORM_OPERATOR_TOKEN` to a short-lived access token. The token is read from the environment and is never printed. Prefer injecting both values from a local secret manager rather than shell history. Preserve the same `--request-id` if a command's outcome is uncertain and you need to retry it. The command prints the organization ID, name, status and initial administrator subject/role, plus whether the response was replayed.
 
 ## Initial administrator permission profile
 
@@ -66,4 +67,4 @@ The role label is descriptive; authorization is enforced by the membership's exp
 
 ## Verification required in Codespaces
 
-Run `pnpm db:migrate`, `pnpm typecheck`, `pnpm test`, `pnpm build`, then exercise the provisioning command against a disposable PostgreSQL database with a synthetic OIDC issuer/JWKS and synthetic platform-operator/admin subjects. Verify rollback on invalid admin membership data, non-operator denial, duplicate provisioning behavior, audit records, and that no public API route can create tenants.
+Run `pnpm db:migrate`, `pnpm typecheck`, `pnpm test`, `pnpm build`, then exercise the provisioning command against a disposable PostgreSQL database with a synthetic OIDC issuer/JWKS and synthetic platform-operator/admin subjects. Verify rollback on invalid admin membership data, non-operator denial, idempotent retries, mismatched request-ID reuse, audit records, and that no public API route can create tenants.

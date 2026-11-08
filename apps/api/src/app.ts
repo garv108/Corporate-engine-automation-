@@ -11,6 +11,7 @@ import { healthRouter } from "./routes/health.js";
 import { createProcessModelsRouter, postgresProcessModelRepository, type ProcessModelRepository } from "./process-models/process-models.js";
 import { createDiscoverySessionsRouter, postgresDiscoverySessionRepository, type DiscoverySessionRepository } from "./process-discovery/discovery-sessions.js";
 import { createOpportunityIntelligenceRouter, postgresOpportunityIntelligenceRepository, type OpportunityIntelligenceRepository } from "./opportunities/opportunity-intelligence.js";
+import { createWorkforceRouter } from "./workforce/workforce.js";
 
 const configuredIdentityVerifier: IdentityVerifier = createConfiguredIdentityVerifier(config);
 
@@ -51,6 +52,7 @@ export function createApp(
   );
   application.use(
     "/api/v1/business-processes/:processId/models",
+    authenticationMiddleware(identityVerifier),
     createProcessModelsRouter(processModelRepository)
   );
   application.use(
@@ -65,7 +67,13 @@ export function createApp(
   );
   application.use(
     "/api/v1/opportunities/:opportunityId",
+    authenticationMiddleware(identityVerifier),
     createOpportunityIntelligenceRouter(opportunityIntelligenceRepository)
+  );
+  application.use(
+    "/api/v1/workforce",
+    authenticationMiddleware(identityVerifier),
+    createWorkforceRouter()
   );
 
   application.use((_request, response) => {

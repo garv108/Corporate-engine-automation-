@@ -20,8 +20,6 @@ describe("CIAS API", () => {
     expect(response.status).toBe(404);
     expect(response.body.error.code).toBe("NOT_FOUND");
   });
-});
-
 
   it("requires authentication for workforce routes", async () => {
     const response = await request(app).get("/api/v1/workforce/employees");
@@ -34,3 +32,4 @@ describe("CIAS API", () => {
     expect(response.status).toBe(401);
     expect(response.body.error.code).toBe("UNAUTHENTICATED");
   });
+});

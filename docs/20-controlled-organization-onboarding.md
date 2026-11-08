@@ -28,7 +28,7 @@ INSERT INTO cias_platform_operators (issuer, subject, created_by)
 VALUES ('https://YOUR-ISSUER', 'IMMUTABLE-OPERATOR-SUBJECT', 'DBA-CHANGE-REFERENCE');
 ```
 
-Do not expose this table to the application runtime role for arbitrary writes. In production, separate migration, provisioning and application database roles. The application runtime role should have only the minimum read privileges required by normal API operation; provisioning should run with a dedicated role that can create tenants, create memberships and write audit events. Operator allowlisting and revocation remain DBA-controlled.
+Do not expose this table to the application runtime role for arbitrary writes. In production, separate migration, provisioning and application database roles. The provisioning role needs only SELECT on `cias_platform_operators`, INSERT on `tenants`, `tenant_memberships` and `audit_events`, plus the minimum sequence/function privileges required by those inserts and audit triggers. It must not be able to add or modify platform operators. The API runtime role must not be able to create tenants or memberships. Operator allowlisting and revocation remain DBA-controlled.
 
 ## Provisioning command
 
@@ -38,7 +38,7 @@ From the repository root, after migration and identity-provider configuration:
 CIAS_PLATFORM_OPERATOR_TOKEN='SHORT-LIVED-ACCESS-TOKEN' pnpm --filter @cias/api db:provision-organization -- --name "Example Organization" --admin-subject "IMMUTABLE-ADMIN-SUBJECT"
 ```
 
-The token is read from the environment and is never printed. Prefer injecting it from a local secret manager rather than shell history. Use a short-lived token. The command prints only the created tenant ID, name, status and initial admin subject/role.
+Set `CIAS_PROVISIONING_DATABASE_URL` to a dedicated restricted database role (do not reuse the API runtime role) and `CIAS_PLATFORM_OPERATOR_TOKEN` to a short-lived access token. The token is read from the environment and is never printed. Prefer injecting both values from a local secret manager rather than shell history. The command prints only the created tenant ID, name, status and initial admin subject/role.
 
 ## Initial administrator permission profile
 

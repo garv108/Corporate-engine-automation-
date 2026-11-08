@@ -5,7 +5,11 @@ import { config } from "../config.js";
 import { verifyOidcAccessToken } from "../auth/oidc.js";
 
 const { Pool } = pg;
-const pool = new Pool({ connectionString: config.DATABASE_URL, max: 1 });
+const provisioningDatabaseUrl = process.env.CIAS_PROVISIONING_DATABASE_URL;
+if (!provisioningDatabaseUrl) {
+  throw new Error("CIAS_PROVISIONING_DATABASE_URL must point to the restricted provisioning database role");
+}
+const pool = new Pool({ connectionString: provisioningDatabaseUrl, max: 1 });
 const args = process.argv.slice(2);
 
 function option(name: string): string | undefined {

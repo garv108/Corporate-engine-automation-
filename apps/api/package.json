@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "db:migrate": "tsx src/db/migrate.ts",
-    "db:verify-tenant-integrity": "tsx src/db/verify-tenant-integrity.ts"
+    "db:verify-tenant-integrity": "tsx src/db/verify-tenant-integrity.ts",
+    "db:provision-organization": "tsx src/db/provision-organization.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

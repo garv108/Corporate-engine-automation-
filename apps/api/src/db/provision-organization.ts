@@ -3,6 +3,7 @@ import { createRemoteJWKSet } from "jose";
 import pg from "pg";
 import { config } from "../config.js";
 import { verifyOidcAccessToken } from "../auth/oidc.js";
+import { provisionOrganization } from "./organization-provisioning.js";
 
 const { Pool } = pg;
 const provisioningDatabaseUrl = process.env.CIAS_PROVISIONING_DATABASE_URL;
@@ -10,25 +11,32 @@ if (!provisioningDatabaseUrl) {
   throw new Error("CIAS_PROVISIONING_DATABASE_URL must point to the restricted provisioning database role");
 }
 const pool = new Pool({ connectionString: provisioningDatabaseUrl, max: 1 });
-const args = process.argv.slice(2);
 
-function option(name: string): string | undefined {
-  const index = args.indexOf(name);
-  return index >= 0 ? args[index + 1] : undefined;
-}
+function parseArguments(args: string[]): { name: string; adminSubject: string } {
+  const values = new Map<string, string>();
+  const allowed = new Set(["--name", "--admin-subject"]);
+  for (let index = 0; index < args.length; index += 2) {
+    const flag = args[index];
+    const value = args[index + 1];
+    if (!flag?.startsWith("--") || !allowed.has(flag)) {
+      throw new Error(`Unexpected argument: ${flag ?? "(missing)"}`);
+    }
+    if (values.has(flag)) throw new Error(`Argument may only be supplied once: ${flag}`);
+    if (!value || value.startsWith("--")) throw new Error(`Missing value for ${flag}`);
+    values.set(flag, value.trim());
+  }
 
-function required(name: string): string {
-  const value = option(name)?.trim();
-  if (!value) throw new Error(`Missing required argument: ${name}`);
-  return value;
+  const name = values.get("--name");
+  const adminSubject = values.get("--admin-subject");
+  if (!name) throw new Error("Missing required argument: --name");
+  if (!adminSubject) throw new Error("Missing required argument: --admin-subject");
+  if (name.length < 2 || name.length > 200) throw new Error("--name must be 2–200 characters");
+  if (adminSubject.length > 255) throw new Error("--admin-subject must be at most 255 characters");
+  return { name, adminSubject };
 }
 
 async function main(): Promise<void> {
-  const name = required("--name");
-  const adminSubject = required("--admin-subject");
-  if (name.length < 2 || name.length > 200) throw new Error("--name must be 2–200 characters");
-  if (adminSubject.length > 255) throw new Error("--admin-subject must be at most 255 characters");
-
+  const { name, adminSubject } = parseArguments(process.argv.slice(2));
   const token = process.env.CIAS_PLATFORM_OPERATOR_TOKEN;
   if (!token) throw new Error("CIAS_PLATFORM_OPERATOR_TOKEN is required");
   if (!config.OIDC_ISSUER || !config.OIDC_AUDIENCE || !config.OIDC_JWKS_URL) {
@@ -52,61 +60,13 @@ async function main(): Promise<void> {
 
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
-    const operator = await client.query(
-      "SELECT id FROM cias_platform_operators WHERE issuer = $1 AND subject = $2 AND status = 'active' FOR SHARE",
-      [config.OIDC_ISSUER, claims.sub]
-    );
-    if (!operator.rows[0]) throw new Error("Caller is not an active CIAS platform operator");
-
-    const tenant = await client.query(
-      "INSERT INTO tenants (name, status) VALUES ($1, 'active') RETURNING id, name, status",
-      [name]
-    );
-    const tenantId = tenant.rows[0].id as string;
-
-    const organizationAdminPermissions = [
-      "departments:read", "departments:create", "departments:update",
-      "business_processes:read", "business_processes:create", "business_processes:update",
-      "business_process_models:read", "business_process_models:create",
-      "business_process_models:update", "business_process_models:confirm",
-      "business_process_models:review_facts",
-      "process_discovery_sessions:read", "process_discovery_sessions:create",
-      "process_discovery_sessions:update", "process_discovery_sessions:confirm",
-      "process_discovery_sessions:convert",
-      "opportunities:read", "opportunities:create", "opportunities:update",
-      "opportunities:evidence:create", "opportunities:interventions:create",
-      "opportunities:interventions:update", "opportunities:assess",
-      "workforce:employees:read", "workforce:employees:create",
-      "workforce:skills:record", "workforce:tasks:read",
-      "workforce:tasks:create", "workforce:tasks:update"
-    ];
-
-    const membership = await client.query(
-      "INSERT INTO tenant_memberships (tenant_id, issuer, subject, status, roles, permissions) " +
-      "VALUES ($1, $2, $3, 'active', ARRAY['organization_admin']::text[], $4::text[]) " +
-      "RETURNING id",
-      [tenantId, config.OIDC_ISSUER, adminSubject, organizationAdminPermissions]
-    );
-
-    await client.query(
-      "INSERT INTO audit_events (tenant_id, actor_type, actor_id, action, resource_type, resource_id, decision, metadata) " +
-      "VALUES ($1, 'platform_operator', $2, 'organization.provisioned', 'tenant', $1::text, 'allowed', $3::jsonb)",
-      [tenantId, claims.sub, JSON.stringify({
-        organizationName: name,
-        initialAdministratorMembershipId: membership.rows[0].id,
-        initialRole: "organization_admin",
-        permissionProfile: "organization_admin_m3b_v1"
-      })]
-    );
-    await client.query("COMMIT");
-    process.stdout.write(JSON.stringify({
-      organization: { id: tenantId, name, status: "active" },
-      initialAdministrator: { subject: adminSubject, role: "organization_admin" }
-    }, null, 2) + "\n");
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
+    const result = await provisionOrganization(client, {
+      name,
+      issuer: config.OIDC_ISSUER,
+      operatorSubject: claims.sub,
+      adminSubject
+    });
+    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
   } finally {
     client.release();
   }

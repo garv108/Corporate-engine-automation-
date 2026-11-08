@@ -21,3 +21,16 @@ describe("CIAS API", () => {
     expect(response.body.error.code).toBe("NOT_FOUND");
   });
 });
+
+
+  it("requires authentication for workforce routes", async () => {
+    const response = await request(app).get("/api/v1/workforce/employees");
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe("UNAUTHENTICATED");
+  });
+
+  it("requires authentication for process model routes", async () => {
+    const response = await request(app).get("/api/v1/business-processes/00000000-0000-4000-8000-000000000001/models");
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe("UNAUTHENTICATED");
+  });

@@ -166,7 +166,6 @@ export default function FounderWorkspace() {
   function completeTask(taskId: string) {
     setTasks(current => current.map(t => t.id === taskId ? { ...t, status: "done", trackedSeconds: t.trackedSeconds + (t.startedAt ? Math.floor((Date.now() - t.startedAt) / 1000) : 0), startedAt: null } : t)); notify("Task completed and time recorded");
   }
-  function updateTask(taskId: string, patch: Partial<Task>) { setTasks(current => current.map(t => t.id === taskId ? { ...t, ...patch } : t)); }
   function resetDemo() {
     if (!window.confirm("Reset this browser prototype to the original sample organization and tasks?")) return;
     setDepartments(starterDepartments); setEmployees(starterEmployees); setTasks(starterTasks); setSelectedEmployee(null); notify("Sample workspace restored");

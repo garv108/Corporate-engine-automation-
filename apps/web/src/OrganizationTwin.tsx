@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -94,7 +94,7 @@ function OrgNode({ data }: NodeProps<TwinNode>) {
 function DepartmentNode({ data }: NodeProps<TwinNode>) {
   if (data.kind !== "department") return null;
   return (
-    <div className="ot-department-node" style={{ ["--dept-accent" as string]: data.accent }}>
+    <div className="ot-department-node" style={{ "--dept-accent": data.accent } as CSSProperties}>
       <Handle type="target" position={Position.Top} />
       <div className="ot-dept-icon"><span /></div>
       <div className="ot-dept-copy">
@@ -275,7 +275,7 @@ export default function OrganizationTwin() {
       <div className="ot-stats">
         <div><span>DEPARTMENTS</span><strong>04</strong><small>Illustrative structure</small></div>
         <div><span>PEOPLE</span><strong>09</strong><small>Fictional profiles</small></div>
-        <div><span>ACTIVE TASKS</span><strong>32</strong><small>Sample workload</small></div>
+        <div><span>TASK CARDS</span><strong>04</strong><small>Illustrative task records</small></div>
         <div><span>DEPENDENCIES</span><strong>02</strong><small>Illustrative links</small></div>
       </div>
       <div className="ot-workspace">

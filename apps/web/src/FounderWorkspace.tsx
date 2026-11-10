@@ -41,7 +41,7 @@ const starterTasks: Task[] = [
 function readStore<T>(key: keyof typeof starterState, fallback: T): T {
   try { const raw = localStorage.getItem(KEY); if (!raw) return fallback; const parsed = JSON.parse(raw) as Partial<typeof starterState>; return (parsed[key] as T) ?? fallback; } catch { return fallback; }
 }
-const starterState = { departments: starterDepartments, employees: starterEmployees, tasks: starterTasks };
+const starterState = { departments: starterDepartments, employees: starterEmployees, tasks: starterTasks, positions: {} as Record<string, { x: number; y: number }> };
 function id(prefix: string) { return prefix + "-" + Math.random().toString(36).slice(2, 9); }
 function formatTime(seconds: number) { const h = Math.floor(seconds / 3600); const m = Math.floor((seconds % 3600) / 60); const s = seconds % 60; return [h, m, s].map(v => String(v).padStart(2, "0")).join(":"); }
 function Avatar({ employee, size = "normal" }: { employee: Employee; size?: "normal" | "large" }) {
@@ -66,12 +66,12 @@ function WorldNode({ data, selected }: NodeProps<WorldNode>) {
 }
 const nodeTypes: NodeTypes = { world: WorldNode };
 
-function buildWorld(departments: Department[], employees: Employee[]): WorldNode[] {
+function buildWorld(departments: Department[], employees: Employee[], savedPositions: Record<string, { x: number; y: number }>): WorldNode[] {
   const positions: Record<string, { x: number; y: number }> = {
     leadership: { x: 470, y: 65 }, operations: { x: 80, y: 330 }, product: { x: 470, y: 330 }, growth: { x: 860, y: 330 }
   };
   const result: WorldNode[] = departments.map((department) => {
-    const pos = positions[department.id] ?? { x: 80 + departments.indexOf(department) * 300, y: 100 };
+    const pos = savedPositions["zone-" + department.id] ?? positions[department.id] ?? { x: 80 + departments.indexOf(department) * 300, y: 100 };
     return { id: "zone-" + department.id, type: "world", position: pos, data: { kind: "zone", department, count: employees.filter(e => e.departmentId === department.id).length }, draggable: false };
   });
   const offsets: Record<string, Array<{ x: number; y: number }>> = {
@@ -83,7 +83,7 @@ function buildWorld(departments: Department[], employees: Employee[]): WorldNode
   const indexByDepartment: Record<string, number> = {};
   employees.forEach((employee) => {
     const i = indexByDepartment[employee.departmentId] ?? 0; indexByDepartment[employee.departmentId] = i + 1;
-    const p = offsets[employee.departmentId]?.[i] ?? { x: 80 + i * 145, y: 700 };
+    const p = savedPositions[employee.id] ?? offsets[employee.departmentId]?.[i] ?? { x: 80 + i * 145, y: 700 };
     const department = departments.find(d => d.id === employee.departmentId)?.name ?? "Unassigned";
     result.push({ id: employee.id, type: "world", position: p, data: { kind: "person", employee, department } });
   });
@@ -100,6 +100,7 @@ export default function FounderWorkspace() {
   const [departments, setDepartments] = useState<Department[]>(() => readStore("departments", starterDepartments));
   const [employees, setEmployees] = useState<Employee[]>(() => readStore("employees", starterEmployees));
   const [tasks, setTasks] = useState<Task[]>(() => readStore("tasks", starterTasks));
+  const [worldPositions, setWorldPositions] = useState<Record<string, { x: number; y: number }>>(() => readStore("positions", {}));
   const [tab, setTab] = useState<"world" | "people" | "tasks" | "insights">("world");
   const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
   const [showEmployeeForm, setShowEmployeeForm] = useState(false);
@@ -113,11 +114,11 @@ export default function FounderWorkspace() {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
-  useEffect(() => { localStorage.setItem(KEY, JSON.stringify({ departments, employees, tasks })); }, [departments, employees, tasks]);
+  useEffect(() => { localStorage.setItem(KEY, JSON.stringify({ departments, employees, tasks, positions: worldPositions })); }, [departments, employees, tasks, worldPositions]);
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []);
   const activeTask = tasks.find(t => t.startedAt !== null);
   const selected = employees.find(e => e.id === selectedEmployee) ?? null;
-  const worldNodes = useMemo(() => buildWorld(departments, employees), [departments, employees]);
+  const worldNodes = useMemo(() => buildWorld(departments, employees, worldPositions), [departments, employees, worldPositions]);
   const [nodes, setNodes, onNodesChange] = useNodesState<WorldNode>(worldNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(makeEdges(departments, employees));
   useEffect(() => { setNodes(worldNodes); setEdges(makeEdges(departments, employees)); }, [worldNodes, departments, employees, setNodes, setEdges]);
@@ -168,7 +169,7 @@ export default function FounderWorkspace() {
   }
   function resetDemo() {
     if (!window.confirm("Reset this browser prototype to the original sample organization and tasks?")) return;
-    setDepartments(starterDepartments); setEmployees(starterEmployees); setTasks(starterTasks); setSelectedEmployee(null); notify("Sample workspace restored");
+    setDepartments(starterDepartments); setEmployees(starterEmployees); setTasks(starterTasks); setWorldPositions({}); setSelectedEmployee(null); notify("Sample workspace restored");
   }
 
   const taskCards = (status: TaskStatus, title: string, icon: string) => <section className="fw-task-column" key={status}>
@@ -212,7 +213,7 @@ export default function FounderWorkspace() {
           <div className="fw-world-canvas">
             <div className="fw-world-sky"><span className="fw-world-sun" /><span className="fw-cloud cloud-one" /><span className="fw-cloud cloud-two" /></div>
             <div className="fw-world-land" />
-            <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onNodeClick={(_, node) => { if (node.data.kind === "person") setSelectedEmployee(node.data.employee.id); }} fitView fitViewOptions={{ padding: 0.12, minZoom: 0.5, maxZoom: 0.9 }} minZoom={0.3} maxZoom={1.4} nodesDraggable nodesConnectable={false} elementsSelectable proOptions={{ hideAttribution: true }}>
+            <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onNodeDragStop={(_, node) => setWorldPositions(current => ({ ...current, [node.id]: node.position }))} onNodeClick={(_, node) => { if (node.data.kind === "person") setSelectedEmployee(node.data.employee.id); }} fitView fitViewOptions={{ padding: 0.12, minZoom: 0.5, maxZoom: 0.9 }} minZoom={0.3} maxZoom={1.4} nodesDraggable nodesConnectable={false} elementsSelectable proOptions={{ hideAttribution: true }}>
               <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#6c6991" />
               <Controls position="bottom-left" showInteractive={false} />
               <MiniMap position="bottom-right" nodeColor={n => n.data.kind === "zone" ? "#9678d9" : "#5dc6bf"} maskColor="rgba(10,9,27,.65)" />
@@ -226,7 +227,7 @@ export default function FounderWorkspace() {
             <div className="fw-profile-block"><label>ABOUT</label><p>{selected.bio || "No introduction added yet."}</p></div>
             <div className="fw-profile-block"><label>SKILLS & CAPABILITIES</label><div className="fw-skill-pills">{selected.skills.map(skill => <span key={skill}>{skill}</span>)}</div></div>
             <div className="fw-profile-block"><label>WORK SNAPSHOT</label><div className="fw-profile-stats"><div><strong>{tasks.filter(t => t.ownerId === selected.id && t.status !== "done").length}</strong><small>Open tasks</small></div><div><strong>{tasks.filter(t => t.ownerId === selected.id && t.status === "done").length}</strong><small>Completed</small></div></div></div>
-            <button className="fw-button fw-button-primary fw-full" onClick={() => editEmployee(selected)}>Edit profile</button>
+            <div className="fw-profile-block"><label>ASSIGNED WORK</label><div className="fw-profile-task-list">{tasks.filter(t => t.ownerId === selected.id).map(task => <div key={task.id}><strong>{task.title}</strong><span>{task.status.replace("_", " ")} · Due {task.dueDate}</span></div>)}{tasks.filter(t => t.ownerId === selected.id).length === 0 && <small>No tasks assigned yet.</small>}</div></div><button className="fw-button fw-button-primary fw-full" onClick={() => editEmployee(selected)}>Edit profile</button>
             <button className="fw-button fw-button-quiet fw-full" onClick={() => { setEditingTaskId(null); setTaskDraft(d => ({ ...d, ownerId: selected.id })); setShowTaskForm(true); setTab("tasks"); }}>＋ Create task for {selected.name.split(" ")[0]}</button>
           </aside>}
         </div>
@@ -252,7 +253,7 @@ export default function FounderWorkspace() {
       </section>}
     </main>
     {showEmployeeForm && <div className="fw-modal-backdrop" onClick={() => setShowEmployeeForm(false)}><form className="fw-modal" onSubmit={employeeEditId ? saveEmployee : addEmployee} onClick={e => e.stopPropagation()}>
-      <div className="fw-modal-head"><div><span>FOUNDER EDITOR</span><h2>{employeeEditId ? "Edit employee" : "Add team member"}</h2></div><button type="button" onClick={() => setShowEmployeeForm(false)}>×</button></div>
+      <div className="fw-modal-head"><div><span>FOUNDER EDITOR</span><h2>{employeeEditId ? "Edit employee" : "Add team member"}</h2></div><button type="button" onClick={() => { setShowEmployeeForm(false); setEmployeeEditId(null); }}>×</button></div>
       <label>Full name<input required value={employeeDraft.name} onChange={e => setEmployeeDraft(d => ({ ...d, name: e.target.value }))} placeholder="Employee name" /></label>
       <label>Role / designation<input required value={employeeDraft.role} onChange={e => setEmployeeDraft(d => ({ ...d, role: e.target.value }))} placeholder="e.g. Operations Executive" /></label>
       <label>Department<select value={employeeDraft.departmentId} onChange={e => setEmployeeDraft(d => ({ ...d, departmentId: e.target.value }))}>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
@@ -261,7 +262,7 @@ export default function FounderWorkspace() {
       <div className="fw-modal-actions"><button type="button" className="fw-button fw-button-quiet" onClick={() => setShowEmployeeForm(false)}>Cancel</button><button className="fw-button fw-button-primary">{employeeEditId ? "Save changes" : "Add to world"}</button></div>
     </form></div>}
     {showTaskForm && <div className="fw-modal-backdrop" onClick={() => { setShowTaskForm(false); setEditingTaskId(null); }}><form className="fw-modal" onSubmit={createTask} onClick={e => e.stopPropagation()}>
-      <div className="fw-modal-head"><div><span>TASK INTAKE</span><h2>{editingTaskId ? "Correct task details" : "Submit a task"}</h2></div><button type="button" onClick={() => setShowTaskForm(false)}>×</button></div>
+      <div className="fw-modal-head"><div><span>TASK INTAKE</span><h2>{editingTaskId ? "Correct task details" : "Submit a task"}</h2></div><button type="button" onClick={() => { setShowTaskForm(false); setEditingTaskId(null); }}>×</button></div>
       <p className="fw-modal-intro">Record the work, who requested it and who is responsible. It enters the approval queue before becoming active.</p>
       <label>Task title<input required value={taskDraft.title} onChange={e => setTaskDraft(d => ({ ...d, title: e.target.value }))} placeholder="What needs to get done?" /></label>
       <label>Description<textarea rows={3} value={taskDraft.description} onChange={e => setTaskDraft(d => ({ ...d, description: e.target.value }))} placeholder="Expected output and context..." /></label>

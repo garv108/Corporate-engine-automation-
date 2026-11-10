@@ -195,7 +195,7 @@ const initialEdges: Edge[] = [
   { id: "manager-dev", source: "p-01", target: "p-03", type: "smoothstep", animated: true, label: "reports to", style: { stroke: "#b18bff", strokeDasharray: "5 4" } },
   { id: "manager-anaya", source: "p-02", target: "p-06", type: "smoothstep", animated: true, label: "reports to", style: { stroke: "#b18bff", strokeDasharray: "5 4" } },
   { id: "manager-tara", source: "p-01", target: "p-08", type: "smoothstep", animated: true, label: "reports to", style: { stroke: "#b18bff", strokeDasharray: "5 4" } },
-  ...taskRecords.map((t, i) => ({ id: "assign-" + t.id, source: people.find((p) => p.name === t.owner)!.id, target: t.id, type: "smoothstep", animated: true, style: { stroke: "#3bc9d5", strokeDasharray: "4 5" }, label: "assigned" })),
+  ...taskRecords.map((t) => ({ id: "assign-" + t.id, source: people.find((p) => p.name === t.owner)!.id, target: t.id, type: "smoothstep", animated: true, style: { stroke: "#3bc9d5", strokeDasharray: "4 5" }, label: "assigned" })),
   { id: "dependency-roadmap-release", source: "t-01", target: "t-02", type: "smoothstep", animated: true, label: "blocks", style: { stroke: "#ffb45f", strokeWidth: 2 } },
   { id: "dependency-access-campaign", source: "t-03", target: "t-04", type: "smoothstep", animated: true, label: "enables", style: { stroke: "#ffb45f", strokeWidth: 2 } }
 ];

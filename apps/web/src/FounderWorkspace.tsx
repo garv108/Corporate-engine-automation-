@@ -109,8 +109,8 @@ export default function FounderWorkspace() {
   const [toast, setToast] = useState("");
   const [employeeDraft, setEmployeeDraft] = useState({ name: "", role: "", departmentId: "operations", skills: "", bio: "" });
   const [taskDraft, setTaskDraft] = useState({ title: "", description: "", ownerId: "e2", requestedBy: "Manager", dueDate: "", priority: "Normal" as Task["priority"], estimatedMinutes: "60" });
-  const [taskEditId, setTaskEditId] = useState<string | null>(null);
-  const [managerNote, setManagerNote] = useState("");
+  const [employeeEditId, setEmployeeEditId] = useState<string | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
   useEffect(() => { localStorage.setItem(KEY, JSON.stringify({ departments, employees, tasks })); }, [departments, employees, tasks]);
@@ -121,7 +121,6 @@ export default function FounderWorkspace() {
   const [nodes, setNodes, onNodesChange] = useNodesState<WorldNode>(worldNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(makeEdges(departments, employees));
   useEffect(() => { setNodes(worldNodes); setEdges(makeEdges(departments, employees)); }, [worldNodes, departments, employees, setNodes, setEdges]);
-  const visibleTasks = tasks.filter(task => taskFilter === "all" || task.status === taskFilter);
   const counts = { proposed: tasks.filter(t => t.status === "proposed").length, todo: tasks.filter(t => t.status === "todo").length, active: tasks.filter(t => t.status === "in_progress").length, done: tasks.filter(t => t.status === "done").length };
   const totalTracked = tasks.reduce((sum, t) => sum + t.trackedSeconds + (t.startedAt ? Math.floor((now - t.startedAt) / 1000) : 0), 0);
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); };
@@ -130,25 +129,26 @@ export default function FounderWorkspace() {
     event.preventDefault();
     const employee: Employee = { id: id("emp"), name: employeeDraft.name.trim(), role: employeeDraft.role.trim(), departmentId: employeeDraft.departmentId, skills: employeeDraft.skills.split(",").map(s => s.trim()).filter(Boolean), level: "Team member", color: ["violet", "cyan", "blue", "rose"][employees.length % 4] ?? "violet", bio: employeeDraft.bio.trim() };
     if (!employee.name || !employee.role) return;
-    setEmployees(current => [...current, employee]); setSelectedEmployee(employee.id); setShowEmployeeForm(false);
+    setEmployees(current => [...current, employee]); setSelectedEmployee(employee.id); setShowEmployeeForm(false); setEmployeeEditId(null);
     setEmployeeDraft({ name: "", role: "", departmentId: "operations", skills: "", bio: "" }); notify("Employee added to your organization world");
   }
   function saveEmployee(event: FormEvent) {
     event.preventDefault();
-    if (!selected) return;
-    setEmployees(current => current.map(e => e.id === selected.id ? { ...e, name: employeeDraft.name.trim(), role: employeeDraft.role.trim(), departmentId: employeeDraft.departmentId, skills: employeeDraft.skills.split(",").map(s => s.trim()).filter(Boolean), bio: employeeDraft.bio.trim() } : e));
-    setShowEmployeeForm(false); notify("Employee profile updated");
+    if (!employeeEditId) return;
+    setEmployees(current => current.map(e => e.id === employeeEditId ? { ...e, name: employeeDraft.name.trim(), role: employeeDraft.role.trim(), departmentId: employeeDraft.departmentId, skills: employeeDraft.skills.split(",").map(s => s.trim()).filter(Boolean), bio: employeeDraft.bio.trim() } : e));
+    setShowEmployeeForm(false); setEmployeeEditId(null); notify("Employee profile updated");
   }
   function editEmployee(employee: Employee) {
-    setSelectedEmployee(employee.id); setEmployeeDraft({ name: employee.name, role: employee.role, departmentId: employee.departmentId, skills: employee.skills.join(", "), bio: employee.bio }); setShowEmployeeForm(true);
+    setSelectedEmployee(employee.id); setEmployeeEditId(employee.id); setEmployeeDraft({ name: employee.name, role: employee.role, departmentId: employee.departmentId, skills: employee.skills.join(", "), bio: employee.bio }); setShowEmployeeForm(true);
   }
   function createTask(event: FormEvent) {
     event.preventDefault();
-    const task: Task = { id: id("task"), title: taskDraft.title.trim(), description: taskDraft.description.trim(), ownerId: taskDraft.ownerId, requestedBy: taskDraft.requestedBy.trim() || "Manager", dueDate: taskDraft.dueDate, priority: taskDraft.priority, status: "proposed", estimatedMinutes: Number(taskDraft.estimatedMinutes) || 60, trackedSeconds: 0, startedAt: null, createdAt: Date.now() };
+    const task: Task = { id: editingTaskId ?? id("task"), title: taskDraft.title.trim(), description: taskDraft.description.trim(), ownerId: taskDraft.ownerId, requestedBy: taskDraft.requestedBy.trim() || "Manager", dueDate: taskDraft.dueDate, priority: taskDraft.priority, status: "proposed", estimatedMinutes: Number(taskDraft.estimatedMinutes) || 60, trackedSeconds: editingTaskId ? (tasks.find(t => t.id === editingTaskId)?.trackedSeconds ?? 0) : 0, startedAt: null, createdAt: editingTaskId ? (tasks.find(t => t.id === editingTaskId)?.createdAt ?? Date.now()) : Date.now() };
     if (!task.title || !task.dueDate) return;
-    setTasks(current => [task, ...current]); setShowTaskForm(false); setTab("tasks");
+    if (editingTaskId) setTasks(current => current.map(t => t.id === editingTaskId ? task : t)); else setTasks(current => [task, ...current]);
+    setEditingTaskId(null); setShowTaskForm(false); setTab("tasks");
     setTaskDraft({ title: "", description: "", ownerId: employees[0]?.id ?? "", requestedBy: "Manager", dueDate: "", priority: "Normal", estimatedMinutes: "60" });
-    notify("Task submitted for manager approval");
+    notify(editingTaskId ? "Task correction saved for review" : "Task submitted for manager approval");
   }
   function approveTask(taskId: string) {
     setTasks(current => current.map(t => t.id === taskId ? { ...t, status: "todo" } : t)); notify("Task approved and added to employee's work list");
@@ -182,7 +182,7 @@ export default function FounderWorkspace() {
         <strong>{task.title}</strong><p>{task.description || "No description added."}</p>
         <div className="fw-task-owner">{owner && <Avatar employee={owner} />}<span>{owner?.name ?? "Unassigned"}<small>Requested by {task.requestedBy}</small></span></div>
         <div className="fw-task-progress"><span>TIME LOGGED</span><strong>{formatTime(seconds)}</strong><small>Estimate {task.estimatedMinutes} min</small></div>
-        {status === "proposed" && <div className="fw-task-actions"><button onClick={() => approveTask(task.id)} className="fw-button fw-button-primary">Approve</button><button onClick={() => rejectTask(task.id)} className="fw-button fw-button-quiet">Reject</button></div>}
+        {status === "proposed" && <div className="fw-task-actions"><button onClick={() => approveTask(task.id)} className="fw-button fw-button-primary">Approve</button><button onClick={() => { setEditingTaskId(task.id); setTaskDraft({ title: task.title, description: task.description, ownerId: task.ownerId, requestedBy: task.requestedBy, dueDate: task.dueDate, priority: task.priority, estimatedMinutes: String(task.estimatedMinutes) }); setShowTaskForm(true); }} className="fw-button fw-button-quiet">Correct</button><button onClick={() => rejectTask(task.id)} className="fw-button fw-button-quiet">Reject</button></div>}
         {status === "todo" && <div className="fw-task-actions"><button onClick={() => startTask(task.id)} className="fw-button fw-button-primary">▶ Start work</button></div>}
         {status === "in_progress" && <div className="fw-task-actions"><button onClick={() => pauseTask(task.id)} className="fw-button fw-button-quiet">Ⅱ Pause</button><button onClick={() => completeTask(task.id)} className="fw-button fw-button-primary">✓ Complete</button></div>}
         {status === "rejected" && <div className="fw-task-rejected">Not approved · Can be resubmitted</div>}
@@ -206,7 +206,7 @@ export default function FounderWorkspace() {
     <main className="fw-main">
       <header className="fw-topbar"><div><span>CIAS</span><i>/</i>{tab === "world" ? "Organization World" : tab === "people" ? "People & Skills" : tab === "tasks" ? "Task Command" : "Performance"}</div><div className="fw-top-actions"><span className="fw-local-tag">● LOCAL DATA</span><button onClick={resetDemo} title="Restore sample data">↺ Reset demo</button><div className="fw-owner-chip">G<span>Founder</span></div></div></header>
       {tab === "world" && <section className="fw-content">
-        <div className="fw-page-head"><div><div className="fw-eyebrow">YOUR COMPANY · ONE CONNECTED WORLD</div><h1>Organization World</h1><p>Build your team, explore the people behind the work, and shape how your company operates.</p></div><button className="fw-button fw-button-primary" onClick={() => { setEmployeeDraft({ name: "", role: "", departmentId: departments[0]?.id ?? "", skills: "", bio: "" }); setShowEmployeeForm(true); }}>＋ Add employee</button></div>
+        <div className="fw-page-head"><div><div className="fw-eyebrow">YOUR COMPANY · ONE CONNECTED WORLD</div><h1>Organization World</h1><p>Build your team, explore the people behind the work, and shape how your company operates.</p></div><button className="fw-button fw-button-primary" onClick={() => { setEmployeeEditId(null); setSelectedEmployee(null); setEmployeeDraft({ name: "", role: "", departmentId: departments[0]?.id ?? "", skills: "", bio: "" }); setShowEmployeeForm(true); }}>＋ Add employee</button></div>
         <div className="fw-kpis"><div><span>TEAM MEMBERS</span><strong>{employees.length.toString().padStart(2, "0")}</strong><small>People in your world</small></div><div><span>DEPARTMENTS</span><strong>{departments.length.toString().padStart(2, "0")}</strong><small>Connected zones</small></div><div><span>OPEN TASKS</span><strong>{(counts.todo + counts.active + counts.proposed).toString().padStart(2, "0")}</strong><small>Across the organization</small></div><div><span>AWAITING REVIEW</span><strong>{counts.proposed.toString().padStart(2, "0")}</strong><small>Need your approval</small></div></div>
         <div className="fw-world-toolbar"><div><strong>THE PLAYGROUND</strong><span>Drag people to arrange your world · Select an avatar to open their profile</span></div><div className="fw-world-legend"><span><i className="legend-violet" />Leadership</span><span><i className="legend-cyan" />Operations</span><span><i className="legend-blue" />Product</span><span><i className="legend-rose" />Growth</span></div></div>
         <div className="fw-world-layout">
@@ -228,13 +228,13 @@ export default function FounderWorkspace() {
             <div className="fw-profile-block"><label>SKILLS & CAPABILITIES</label><div className="fw-skill-pills">{selected.skills.map(skill => <span key={skill}>{skill}</span>)}</div></div>
             <div className="fw-profile-block"><label>WORK SNAPSHOT</label><div className="fw-profile-stats"><div><strong>{tasks.filter(t => t.ownerId === selected.id && t.status !== "done").length}</strong><small>Open tasks</small></div><div><strong>{tasks.filter(t => t.ownerId === selected.id && t.status === "done").length}</strong><small>Completed</small></div></div></div>
             <button className="fw-button fw-button-primary fw-full" onClick={() => editEmployee(selected)}>Edit profile</button>
-            <button className="fw-button fw-button-quiet fw-full" onClick={() => { setTaskDraft(d => ({ ...d, ownerId: selected.id })); setShowTaskForm(true); setTab("tasks"); }}>＋ Create task for {selected.name.split(" ")[0]}</button>
+            <button className="fw-button fw-button-quiet fw-full" onClick={() => { setEditingTaskId(null); setTaskDraft(d => ({ ...d, ownerId: selected.id })); setShowTaskForm(true); setTab("tasks"); }}>＋ Create task for {selected.name.split(" ")[0]}</button>
           </aside>}
         </div>
         <div className="fw-world-foot"><span>✦ Your organization, visualized</span><span>Changes are saved in this browser automatically</span></div>
       </section>}
       {tab === "people" && <section className="fw-content">
-        <div className="fw-page-head"><div><div className="fw-eyebrow">THE PEOPLE BEHIND THE OUTPUT</div><h1>People & Skills</h1><p>Build each employee profile from your one-to-one conversations.</p></div><button className="fw-button fw-button-primary" onClick={() => { setEmployeeDraft({ name: "", role: "", departmentId: departments[0]?.id ?? "", skills: "", bio: "" }); setShowEmployeeForm(true); }}>＋ Add employee</button></div>
+        <div className="fw-page-head"><div><div className="fw-eyebrow">THE PEOPLE BEHIND THE OUTPUT</div><h1>People & Skills</h1><p>Build each employee profile from your one-to-one conversations.</p></div><button className="fw-button fw-button-primary" onClick={() => { setEmployeeEditId(null); setSelectedEmployee(null); setEmployeeDraft({ name: "", role: "", departmentId: departments[0]?.id ?? "", skills: "", bio: "" }); setShowEmployeeForm(true); }}>＋ Add employee</button></div>
         <div className="fw-search-row"><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search people, roles or skills..." /><span>{employees.length} team members</span></div>
         <div className="fw-people-grid">{employees.filter(e => (e.name + e.role + e.skills.join(" ")).toLowerCase().includes(search.toLowerCase())).map(employee => <button className="fw-person-card" key={employee.id} onClick={() => { setSelectedEmployee(employee.id); setTab("world"); }}><Avatar employee={employee} size="large" /><div><strong>{employee.name}</strong><span>{employee.role}</span><small>{departments.find(d => d.id === employee.departmentId)?.name}</small></div><div className="fw-card-skills">{employee.skills.slice(0, 3).map(skill => <i key={skill}>{skill}</i>)}</div><b>↗</b></button>)}</div>
       </section>}
@@ -242,7 +242,7 @@ export default function FounderWorkspace() {
         <div className="fw-page-head"><div><div className="fw-eyebrow">FROM REQUEST TO RESULT</div><h1>Task Command</h1><p>Capture work, approve it, track execution and record the result.</p></div><button className="fw-button fw-button-primary" onClick={() => setShowTaskForm(true)}>＋ Submit a task</button></div>
         <div className="fw-task-summary"><div><span>NEEDS APPROVAL</span><strong>{counts.proposed}</strong></div><div><span>READY TO START</span><strong>{counts.todo}</strong></div><div><span>IN PROGRESS</span><strong>{counts.active}</strong></div><div><span>COMPLETED</span><strong>{counts.done}</strong></div></div>
         <div className="fw-task-filters"><span>WORK QUEUE</span><select value={taskFilter} onChange={e => setTaskFilter(e.target.value)}><option value="all">All task states</option><option value="proposed">Needs approval</option><option value="todo">Ready</option><option value="in_progress">In progress</option><option value="done">Completed</option><option value="rejected">Rejected</option></select></div>
-        <div className="fw-task-board">{taskFilter === "all" ? <>{taskCards("proposed","Needs approval","◷")}{taskCards("todo","Ready","○")}{taskCards("in_progress","In progress","◉")}{taskCards("done","Completed","✓")}</> : taskCards(taskFilter as TaskStatus,"Filtered tasks","▤")}</div>
+        <div className="fw-task-board">{taskFilter === "all" ? <>{taskCards("proposed","Needs approval","◷")}{taskCards("todo","Ready","○")}{taskCards("in_progress","In progress","◉")}{taskCards("done","Completed","✓")}{taskCards("rejected","Rejected","×")}</> : taskCards(taskFilter as TaskStatus,"Filtered tasks","▤")}</div>
         <div className="fw-task-note"><span>◷</span><div><strong>Time tracking is manual and transparent</strong><p>Start, pause and complete tasks to build a reliable record of time spent. Only one task timer can run at a time in this prototype.</p></div></div>
       </section>}
       {tab === "insights" && <section className="fw-content">
@@ -252,24 +252,24 @@ export default function FounderWorkspace() {
         <div className="fw-insight-disclaimer">Early prototype metrics only. Reliable productivity comparisons require consistent task descriptions, estimates, deadlines and time logging across the team.</div>
       </section>}
     </main>
-    {showEmployeeForm && <div className="fw-modal-backdrop" onClick={() => setShowEmployeeForm(false)}><form className="fw-modal" onSubmit={selected && employeeDraft.name === selected.name ? saveEmployee : addEmployee} onClick={e => e.stopPropagation()}>
-      <div className="fw-modal-head"><div><span>FOUNDER EDITOR</span><h2>{selected && employeeDraft.name === selected.name ? "Edit employee" : "Add team member"}</h2></div><button type="button" onClick={() => setShowEmployeeForm(false)}>×</button></div>
+    {showEmployeeForm && <div className="fw-modal-backdrop" onClick={() => setShowEmployeeForm(false)}><form className="fw-modal" onSubmit={employeeEditId ? saveEmployee : addEmployee} onClick={e => e.stopPropagation()}>
+      <div className="fw-modal-head"><div><span>FOUNDER EDITOR</span><h2>{employeeEditId ? "Edit employee" : "Add team member"}</h2></div><button type="button" onClick={() => setShowEmployeeForm(false)}>×</button></div>
       <label>Full name<input required value={employeeDraft.name} onChange={e => setEmployeeDraft(d => ({ ...d, name: e.target.value }))} placeholder="Employee name" /></label>
       <label>Role / designation<input required value={employeeDraft.role} onChange={e => setEmployeeDraft(d => ({ ...d, role: e.target.value }))} placeholder="e.g. Operations Executive" /></label>
       <label>Department<select value={employeeDraft.departmentId} onChange={e => setEmployeeDraft(d => ({ ...d, departmentId: e.target.value }))}>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
       <label>Skills (comma separated)<input value={employeeDraft.skills} onChange={e => setEmployeeDraft(d => ({ ...d, skills: e.target.value }))} placeholder="Communication, Excel, Research" /></label>
       <label>Interview notes / introduction<textarea rows={3} value={employeeDraft.bio} onChange={e => setEmployeeDraft(d => ({ ...d, bio: e.target.value }))} placeholder="What does this person do well? What are their responsibilities?" /></label>
-      <div className="fw-modal-actions"><button type="button" className="fw-button fw-button-quiet" onClick={() => setShowEmployeeForm(false)}>Cancel</button><button className="fw-button fw-button-primary">{selected && employeeDraft.name === selected.name ? "Save changes" : "Add to world"}</button></div>
+      <div className="fw-modal-actions"><button type="button" className="fw-button fw-button-quiet" onClick={() => setShowEmployeeForm(false)}>Cancel</button><button className="fw-button fw-button-primary">{employeeEditId ? "Save changes" : "Add to world"}</button></div>
     </form></div>}
-    {showTaskForm && <div className="fw-modal-backdrop" onClick={() => setShowTaskForm(false)}><form className="fw-modal" onSubmit={createTask} onClick={e => e.stopPropagation()}>
-      <div className="fw-modal-head"><div><span>TASK INTAKE</span><h2>Submit a task</h2></div><button type="button" onClick={() => setShowTaskForm(false)}>×</button></div>
+    {showTaskForm && <div className="fw-modal-backdrop" onClick={() => { setShowTaskForm(false); setEditingTaskId(null); }}><form className="fw-modal" onSubmit={createTask} onClick={e => e.stopPropagation()}>
+      <div className="fw-modal-head"><div><span>TASK INTAKE</span><h2>{editingTaskId ? "Correct task details" : "Submit a task"}</h2></div><button type="button" onClick={() => setShowTaskForm(false)}>×</button></div>
       <p className="fw-modal-intro">Record the work, who requested it and who is responsible. It enters the approval queue before becoming active.</p>
       <label>Task title<input required value={taskDraft.title} onChange={e => setTaskDraft(d => ({ ...d, title: e.target.value }))} placeholder="What needs to get done?" /></label>
       <label>Description<textarea rows={3} value={taskDraft.description} onChange={e => setTaskDraft(d => ({ ...d, description: e.target.value }))} placeholder="Expected output and context..." /></label>
       <div className="fw-form-grid"><label>Assign to<select value={taskDraft.ownerId} onChange={e => setTaskDraft(d => ({ ...d, ownerId: e.target.value }))}>{employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select></label><label>Requested by<input value={taskDraft.requestedBy} onChange={e => setTaskDraft(d => ({ ...d, requestedBy: e.target.value }))} placeholder="Manager / person" /></label></div>
       <div className="fw-form-grid"><label>Deadline<input required type="date" value={taskDraft.dueDate} onChange={e => setTaskDraft(d => ({ ...d, dueDate: e.target.value }))} /></label><label>Priority<select value={taskDraft.priority} onChange={e => setTaskDraft(d => ({ ...d, priority: e.target.value as Task["priority"] }))}><option>Low</option><option>Normal</option><option>High</option><option>Urgent</option></select></label></div>
       <label>Estimated effort (minutes)<input type="number" min="1" value={taskDraft.estimatedMinutes} onChange={e => setTaskDraft(d => ({ ...d, estimatedMinutes: e.target.value }))} /></label>
-      <div className="fw-modal-actions"><button type="button" className="fw-button fw-button-quiet" onClick={() => setShowTaskForm(false)}>Cancel</button><button className="fw-button fw-button-primary">Send for approval</button></div>
+      <div className="fw-modal-actions"><button type="button" className="fw-button fw-button-quiet" onClick={() => setShowTaskForm(false)}>Cancel</button><button className="fw-button fw-button-primary">{editingTaskId ? "Save correction" : "Send for approval"}</button></div>
     </form></div>}
     {toast && <div className="fw-toast">✓ {toast}</div>}
   </div>;

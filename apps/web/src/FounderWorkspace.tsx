@@ -252,14 +252,14 @@ export default function FounderWorkspace() {
         <div className="fw-insight-disclaimer">Early prototype metrics only. Reliable productivity comparisons require consistent task descriptions, estimates, deadlines and time logging across the team.</div>
       </section>}
     </main>
-    {showEmployeeForm && <div className="fw-modal-backdrop" onClick={() => setShowEmployeeForm(false)}><form className="fw-modal" onSubmit={employeeEditId ? saveEmployee : addEmployee} onClick={e => e.stopPropagation()}>
+    {showEmployeeForm && <div className="fw-modal-backdrop" onClick={() => { setShowEmployeeForm(false); setEmployeeEditId(null); }}><form className="fw-modal" onSubmit={employeeEditId ? saveEmployee : addEmployee} onClick={e => e.stopPropagation()}>
       <div className="fw-modal-head"><div><span>FOUNDER EDITOR</span><h2>{employeeEditId ? "Edit employee" : "Add team member"}</h2></div><button type="button" onClick={() => { setShowEmployeeForm(false); setEmployeeEditId(null); }}>×</button></div>
       <label>Full name<input required value={employeeDraft.name} onChange={e => setEmployeeDraft(d => ({ ...d, name: e.target.value }))} placeholder="Employee name" /></label>
       <label>Role / designation<input required value={employeeDraft.role} onChange={e => setEmployeeDraft(d => ({ ...d, role: e.target.value }))} placeholder="e.g. Operations Executive" /></label>
       <label>Department<select value={employeeDraft.departmentId} onChange={e => setEmployeeDraft(d => ({ ...d, departmentId: e.target.value }))}>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
       <label>Skills (comma separated)<input value={employeeDraft.skills} onChange={e => setEmployeeDraft(d => ({ ...d, skills: e.target.value }))} placeholder="Communication, Excel, Research" /></label>
       <label>Interview notes / introduction<textarea rows={3} value={employeeDraft.bio} onChange={e => setEmployeeDraft(d => ({ ...d, bio: e.target.value }))} placeholder="What does this person do well? What are their responsibilities?" /></label>
-      <div className="fw-modal-actions"><button type="button" className="fw-button fw-button-quiet" onClick={() => setShowEmployeeForm(false)}>Cancel</button><button className="fw-button fw-button-primary">{employeeEditId ? "Save changes" : "Add to world"}</button></div>
+      <div className="fw-modal-actions"><button type="button" className="fw-button fw-button-quiet" onClick={() => { setShowEmployeeForm(false); setEmployeeEditId(null); }}>Cancel</button><button className="fw-button fw-button-primary">{employeeEditId ? "Save changes" : "Add to world"}</button></div>
     </form></div>}
     {showTaskForm && <div className="fw-modal-backdrop" onClick={() => { setShowTaskForm(false); setEditingTaskId(null); }}><form className="fw-modal" onSubmit={createTask} onClick={e => e.stopPropagation()}>
       <div className="fw-modal-head"><div><span>TASK INTAKE</span><h2>{editingTaskId ? "Correct task details" : "Submit a task"}</h2></div><button type="button" onClick={() => { setShowTaskForm(false); setEditingTaskId(null); }}>×</button></div>
@@ -269,7 +269,7 @@ export default function FounderWorkspace() {
       <div className="fw-form-grid"><label>Assign to<select value={taskDraft.ownerId} onChange={e => setTaskDraft(d => ({ ...d, ownerId: e.target.value }))}>{employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select></label><label>Requested by<input value={taskDraft.requestedBy} onChange={e => setTaskDraft(d => ({ ...d, requestedBy: e.target.value }))} placeholder="Manager / person" /></label></div>
       <div className="fw-form-grid"><label>Deadline<input required type="date" value={taskDraft.dueDate} onChange={e => setTaskDraft(d => ({ ...d, dueDate: e.target.value }))} /></label><label>Priority<select value={taskDraft.priority} onChange={e => setTaskDraft(d => ({ ...d, priority: e.target.value as Task["priority"] }))}><option>Low</option><option>Normal</option><option>High</option><option>Urgent</option></select></label></div>
       <label>Estimated effort (minutes)<input type="number" min="1" value={taskDraft.estimatedMinutes} onChange={e => setTaskDraft(d => ({ ...d, estimatedMinutes: e.target.value }))} /></label>
-      <div className="fw-modal-actions"><button type="button" className="fw-button fw-button-quiet" onClick={() => setShowTaskForm(false)}>Cancel</button><button className="fw-button fw-button-primary">{editingTaskId ? "Save correction" : "Send for approval"}</button></div>
+      <div className="fw-modal-actions"><button type="button" className="fw-button fw-button-quiet" onClick={() => { setShowTaskForm(false); setEditingTaskId(null); }}>Cancel</button><button className="fw-button fw-button-primary">{editingTaskId ? "Save correction" : "Send for approval"}</button></div>
     </form></div>}
     {toast && <div className="fw-toast">✓ {toast}</div>}
   </div>;
